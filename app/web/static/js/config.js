@@ -21,6 +21,9 @@
     return `
       <div class="cfg-row" data-bank="${bIdx}" data-target="${tIdx}">
         <input type="text" class="t-key" value="${esc(t.key)}" placeholder="key เช่น rate_3m_1m">
+        <input type="text" class="t-section" value="${esc(t.section_keyword || '')}" placeholder="section (ว่าง=ค่าเริ่มต้น)">
+        <input type="text" class="t-row" value="${esc(t.row_keyword || '')}" placeholder="row (ว่าง=ตามเดือน)">
+        <input type="text" class="t-depositor" value="${esc(t.depositor ?? '')}" placeholder="ผู้รับดอกเบี้ย (ว่าง=บุคคลธรรมดา)">
         <input type="number" step="1" class="t-tenor" value="${t.tenor_months ?? ''}" placeholder="เดือน">
         <input type="number" step="0.1" class="t-amount" value="${t.amount_m ?? ''}" placeholder="ล้านบาท">
         <input type="text" class="t-label" value="${esc(t.alias || t.label || '')}" placeholder="ชื่อ/alias ที่แสดงผล">
@@ -53,7 +56,7 @@
 
       <div class="cfg-field"><label>อัตราที่ติดตาม (rate_targets)</label></div>
       <div class="cfg-row head">
-        <div>Key</div><div>เดือน</div><div>ล้านบาท</div><div>ชื่อ/alias ที่แสดง</div><div></div>
+        <div>Key</div><div>Section (ประเภทบัญชี)</div><div>Row (ผลิตภัณฑ์/ระยะเวลา)</div><div>ผู้รับดอกเบี้ย</div><div>เดือน</div><div>ล้านบาท</div><div>ชื่อ/alias ที่แสดง</div><div></div>
       </div>
       <div class="targets-list">${targets}</div>
       <button class="btn small add-target">+ เพิ่มอัตรา</button>
@@ -79,16 +82,23 @@
       card.querySelectorAll('.cfg-row[data-target]').forEach(row => {
         const key = row.querySelector('.t-key').value.trim();
         if (!key) return;
+        const section = row.querySelector('.t-section').value.trim();
+        const rowKw = row.querySelector('.t-row').value.trim();
+        const depositor = row.querySelector('.t-depositor').value.trim();
         const tenor = row.querySelector('.t-tenor').value;
         const amount = row.querySelector('.t-amount').value;
         const label = row.querySelector('.t-label').value.trim();
-        targets.push({
+        const target = {
           key,
           tenor_months: tenor === '' ? null : Number(tenor),
           amount_m: amount === '' ? null : Number(amount),
           label: label || key,
           alias: label || undefined,
-        });
+        };
+        if (section) target.section_keyword = section;
+        if (rowKw) target.row_keyword = rowKw;
+        if (depositor) target.depositor = depositor;
+        targets.push(target);
       });
       b.rate_targets = targets;
     });

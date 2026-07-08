@@ -3,8 +3,17 @@
 banks/scb.py — ตัวอ่านอัตราดอกเบี้ยของ ธนาคารไทยพาณิชย์ (SCB)
 parser id: "scb_passbook"
 
-ย้ายมาจาก scb_rate_monitor.py เดิม โดย **ไม่เปลี่ยนพฤติกรรมการ extract/parse**
+อ่านตารางเมทริกซ์จากประกาศ (แถว = ผลิตภัณฑ์/ระยะเวลา/วงเงิน, คอลัมน์ = ประเภทลูกค้า 13 คอลัมน์)
+โดยแต่ละ rate_target กำหนดได้เองว่าจะอ่าน:
+  - section_keyword : ข้อความหัวข้อกลุ่มผลิตภัณฑ์ (เช่น "เงินฝากประจำ แบบมีสมุด", "ออมทรัพย์แบบไม่มีสมุดคู่ฝาก")
+                       default = DEFAULT_SECTION_KEYWORD (เงินฝากประจำ แบบมีสมุด — พฤติกรรมเดิม)
+  - row_keyword     : ข้อความหัวแถว/ผลิตภัณฑ์ (เช่น "12 เดือน") default = "{tenor_months} เดือน"
+  - depositor       : ประเภทลูกค้า/คอลัมน์ — คีย์เวิร์ดไทย/อังกฤษ หรือเลขคอลัมน์ 1-13 (ดู DEPOSITOR_COLUMNS)
+                       default = "บุคคลธรรมดา" (คอลัมน์ 1 — พฤติกรรมเดิม)
+  - amount_m        : ใช้เลือก tier วงเงิน ถ้าแถวที่พบมีหลาย tier
+
 เพิ่มธนาคารใหม่ = สร้างไฟล์ banks/<code>.py แบบเดียวกัน แล้วลงทะเบียนใน banks/__init__.py
+(ใช้ helper ที่ generic จาก banks/_tablekit.py ร่วมกันได้)
 
 แต่ละ bank module ต้องมี:
   PARSER_IDS : list[str]              รายชื่อ parser id ที่ไฟล์นี้รองรับ
@@ -16,107 +25,173 @@ import io, re
 import pdfplumber
 
 from ..common import log
+from ._tablekit import (
+    thai_skeleton, kw_in_line, line_equals_kw, row_values,
+    pick_amount_tier, parse_tier_type_and_amount,
+)
 
 PARSER_IDS = ["scb_passbook"]
 
+DEFAULT_SECTION_KEYWORD = "เงินฝากประจำ แบบมีสมุด"
+DEFAULT_DEPOSITOR = "บุคคลธรรมดา"
 
-def _parse_tier_type_and_amount(line: str) -> tuple[str, int] | None:
-    m = re.search(r"น\D{0,8}ยกว\D{0,8}(\d[\d,]*)\s*ล\D{0,6}นบาท", line)
-    if m:
-        return ("less_than", int(m.group(1).replace(",", "")))
-    m = re.search(r"ตงั\D{0,6}แต\D{0,8}(\d[\d,]*)\s*ล\D{0,6}นบาทขึน.ไป", line)
-    if not m:
-        m = re.search(r"ตั้งแต่\s+(\d[\d,]*)\s*ล\D{0,4}นบาทขึ้นไป", line)
-    if m:
-        return ("at_least", int(m.group(1).replace(",", "")))
-    return None
+# ตารางประเภทลูกค้าของ SCB มี 13 คอลัมน์เสมอ — บรรทัดค่าที่ถอดได้ต้องมีครบ 13 token
+# ถ้าไม่ครบ แปลว่า pdfplumber ถอด "-" หลุด → index คอลัมน์จะเลื่อน (อ่านผิดคอลัมน์แบบเงียบ ๆ)
+# จึงปฏิเสธบรรทัดนั้นแทนที่จะคืนค่าที่อาจผิด
+EXPECTED_COLUMNS = 13
+
+# ─────────────────────────── Depositor column map (13 คอลัมน์ตายตัวของ SCB) ───────────────────────────
+DEPOSITOR_COLUMNS: dict[int, list[str]] = {
+    1:  ["บุคคลธรรมดา", "personal", "individual"],
+    2:  ["นิติบุคคลทั่วไป", "juristic person"],
+    3:  ["ราชการ", "government agency", "government"],
+    4:  ["นิติบุคคลไม่แสวงหากำไรและบริษัทประกันภัย", "non-profit juristic person"],
+    5:  ["สถาบันการเงิน", "financial institution"],
+    6:  ["สถานศึกษา", "educational institution", "school"],
+    7:  ["กองทุน", "fund"],
+    8:  ["สหกรณ์", "cooperative"],
+    9:  ["ผู้มีถิ่นฐานนอกประเทศบุคคลธรรมดา", "non-resident personal"],
+    10: ["ผู้มีถิ่นฐานนอกประเทศนิติบุคคล", "non-resident juristic person"],
+    11: ["ผู้มีถิ่นฐานนอกประเทศสถาบันการเงิน", "non-resident financial institution"],
+    12: ["นิติบุคคลพิเศษ", "special juristic person"],
+    13: ["บุคคลพิเศษ", "special person"],
+}
+
+_ALIAS_TO_COLUMN: dict[str, int] = {}
+for _col, _aliases in DEPOSITOR_COLUMNS.items():
+    for _alias in _aliases:
+        _ALIAS_TO_COLUMN[thai_skeleton(_alias)] = _col
 
 
-def _extract_first_rate(line: str) -> float | None:
-    m = re.search(r"\b(\d+\.\d+)\b", line)
-    if m:
-        v = float(m.group(1))
-        if 0.01 <= v <= 10.0:
-            return v
-    return None
+def resolve_depositor(value) -> int | None:
+    """แปลงค่า depositor (คีย์เวิร์ดไทย/อังกฤษ หรือเลข 1-13) → หมายเลขคอลัมน์ หรือ None ถ้าไม่รู้จัก"""
+    if isinstance(value, int):
+        return value if 1 <= value <= 13 else None
+    s = str(value).strip()
+    if s.isdigit():
+        n = int(s)
+        return n if 1 <= n <= 13 else None
+    return _ALIAS_TO_COLUMN.get(thai_skeleton(s))
 
 
-def _find_rate_for_amount(tiers: list[tuple], target_m: float) -> tuple[float | None, str]:
-    less_than = sorted([(am, r) for (t, am, r) in tiers if t == "less_than"], key=lambda x: x[0])
-    at_least  = sorted([(am, r) for (t, am, r) in tiers if t == "at_least"],  key=lambda x: x[0])
-    for upper_m, rate in less_than:
-        if target_m < upper_m:
-            return (rate, f"น้อยกว่า {upper_m} ล้านบาท")
-    if at_least:
-        lower_m, rate = at_least[0]
-        return (rate, f"ตั้งแต่ {lower_m} ล้านบาทขึ้นไป (fallback)")
-    return (None, "ไม่พบ tier ที่เหมาะสม")
+# ─────────────────────────── Row/section scanning ───────────────────────────
+_TOP_LEVEL_RE = re.compile(r"^\d+\.\s+\S")
+
+
+def _find_row_line(lines: list[str], section_kw: str, row_kw: str,
+                    amount_m: float | None) -> tuple[str | None, str]:
+    """หาแถวข้อมูล (บรรทัดที่มีค่าตัวเลข 13 คอลัมน์) ที่ตรงกับ section + row keyword ที่กำหนด"""
+    start = None
+    for i, s in enumerate(lines):
+        if kw_in_line(section_kw, s):
+            start = i
+            break
+    if start is None:
+        return None, ""
+
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if _TOP_LEVEL_RE.match(lines[i]):
+            end = i
+            break
+
+    row_idx = None
+    for i in range(start + 1, end):
+        if line_equals_kw(row_kw, lines[i]):
+            row_idx = i
+            break
+    if row_idx is None:
+        for i in range(start + 1, end):
+            if kw_in_line(row_kw, lines[i]):
+                row_idx = i
+                break
+    if row_idx is None:
+        return None, ""
+
+    row_line = lines[row_idx]
+    if row_values(row_line):
+        return row_line, "บรรทัดเดียว (ไม่มี tier วงเงิน)"
+
+    tiers: list[tuple[str, int, str]] = []
+    for i in range(row_idx + 1, end):
+        s = lines[i]
+        if not kw_in_line("วงเงิน", s):
+            break
+        info = parse_tier_type_and_amount(s)
+        if info and row_values(s):
+            tiers.append((info[0], info[1], s))
+
+    if not tiers:
+        return None, ""
+
+    if amount_m is None:
+        return tiers[0][2], "ไม่ระบุวงเงิน (ใช้ tier แรกที่พบ)"
+
+    return pick_amount_tier(tiers, amount_m)
 
 
 def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:
-    """SCB Regular Passbook parser — คืน dict {key: rate, ..., 'tiers_used': {...}}"""
+    """อ่านค่าอัตราดอกเบี้ยตาม rate_targets (แต่ละตัวกำหนด section/row/depositor เอง)"""
     rate_targets = bank["rate_targets"]
-    TARGET_TENORS = {t["tenor_months"] for t in rate_targets}
-    SECTION_RE = re.compile(r"แบบม.{0,4}สมุด|แบบม[สี ]{0,5}มุด")
-    SECTION_END_RE = re.compile(
-        r"แบบผ.{0,2}กพ.น|ประจา.{0,2}เผ.{0,2}อเหล|ประจา.{0,3}เผ.{0,2}|"
-        r"เงนิ ฝากสาน|เงินฝากสาน|^4\.\s+แบบ"
-    )
-    TENOR_RE = re.compile(r"^\s*(\d+)\s*เด[ือ]{1,2}น\s*$")
 
-    in_section = False
-    current_tenor: int | None = None
-    tiers: dict[int, list] = {t: [] for t in TARGET_TENORS}
-
+    lines: list[str] = []
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
                 text = page.extract_text() or ""
-                for line in text.splitlines():
-                    s = line.strip()
+                for raw in text.splitlines():
+                    s = raw.strip()
                     if not s:
                         continue
-                    if SECTION_RE.search(s):
-                        in_section = True
-                        current_tenor = None
+                    if line_equals_kw("ประเภทลูกค้า", s) or line_equals_kw("ประเภทเงินฝาก", s):
                         continue
-                    if not in_section:
-                        continue
-                    if SECTION_END_RE.search(s):
-                        in_section = False
-                        current_tenor = None
-                        continue
-                    m = TENOR_RE.match(s)
-                    if m:
-                        t = int(m.group(1))
-                        current_tenor = t if t in TARGET_TENORS else None
-                        continue
-                    if current_tenor in TARGET_TENORS:
-                        tier_info = _parse_tier_type_and_amount(s)
-                        if tier_info:
-                            rate = _extract_first_rate(s)
-                            if rate is not None:
-                                tiers[current_tenor].append((tier_info[0], tier_info[1], rate))
+                    lines.append(s)
     except Exception as e:
-        log.error(f"_extract_scb_passbook: {e}")
+        log.error(f"scb.extract_rates: อ่าน PDF ล้มเหลว: {e}")
         return None
 
     result: dict = {}
     tiers_used: dict = {}
+
     for target in rate_targets:
-        key      = target["key"]
-        tenor    = target["tenor_months"]
-        amount_m = target["amount_m"]
-        if not tiers.get(tenor):
-            log.error(f"extract_rates: ไม่พบ tier ใดๆ สำหรับ {tenor}M")
+        key = target["key"]
+        section_kw = target.get("section_keyword") or DEFAULT_SECTION_KEYWORD
+        tenor = target.get("tenor_months")
+        row_kw = target.get("row_keyword") or (f"{tenor} เดือน" if tenor else None)
+        if not row_kw:
+            log.error(f"extract_rates [{key}]: ไม่มี row_keyword และไม่มี tenor_months ให้สร้าง default")
             return None
-        rate, desc = _find_rate_for_amount(tiers[tenor], amount_m)
-        if rate is None:
-            log.error(f"extract_rates: ไม่พบ rate สำหรับ {tenor}M/{amount_m}M")
+
+        depositor_value = target.get("depositor", DEFAULT_DEPOSITOR)
+        col = resolve_depositor(depositor_value)
+        if col is None:
+            log.error(f"extract_rates [{key}]: ไม่รู้จัก depositor '{depositor_value}'")
             return None
+
+        line, desc = _find_row_line(lines, section_kw, row_kw, target.get("amount_m"))
+        if line is None:
+            log.error(f"extract_rates [{key}]: ไม่พบแถวที่ตรง section='{section_kw}' row='{row_kw}'")
+            return None
+
+        vals = row_values(line)
+        if len(vals) != EXPECTED_COLUMNS:
+            log.error(f"extract_rates [{key}]: บรรทัดมี {len(vals)} คอลัมน์ (คาดว่า {EXPECTED_COLUMNS}) "
+                      f"— ถอดข้อมูลไม่น่าเชื่อถือ ปฏิเสธเพื่อกันอ่านผิดคอลัมน์: {line}")
+            return None
+
+        raw_v = vals[col - 1]
+        if raw_v == "-":
+            log.error(f"extract_rates [{key}]: ไม่มีอัตราสำหรับคอลัมน์ {col} (แสดง '-') ในบรรทัด: {line}")
+            return None
+        try:
+            rate = float(raw_v)
+        except ValueError:
+            log.error(f"extract_rates [{key}]: ค่าไม่ใช่ตัวเลข: {raw_v!r}")
+            return None
+
         result[key] = rate
         tiers_used[key] = desc
-        log.info(f"  {target['label']}: {rate:.2f}%  ← {desc}")
+        log.info(f"  {target.get('label', key)}: {rate:.2f}%  ← {desc}")
 
     result["tiers_used"] = tiers_used
     return result

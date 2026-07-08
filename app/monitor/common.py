@@ -173,9 +173,32 @@ def _fmt_change(change: float | None) -> str:
     return f"+{change:.2f}" if change > 0 else (f"{change:.2f}" if change < 0 else "0.00")
 
 
+def _reconcile_csv_header(csv_path: str, headers: list[str]) -> None:
+    """ถ้า header ปัจจุบันของไฟล์ต่างจาก headers ที่คาด (เช่น เพิ่ม/ลบ rate_target)
+    ให้ rewrite ทั้งไฟล์ด้วย header ใหม่ (แถวเก่าเติมค่าว่างในคอลัมน์ที่เพิ่มมาใหม่)"""
+    if not (os.path.isfile(csv_path) and os.path.getsize(csv_path) > 0):
+        return
+    with open(csv_path, "r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        current_headers = reader.fieldnames or []
+        rows = list(reader)
+    if current_headers == headers:
+        return
+    tmp = csv_path + ".tmp"
+    with open(tmp, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fieldnames=headers, restval="")
+        w.writeheader()
+        for row in rows:
+            w.writerow({k: row.get(k, "") for k in headers})
+    os.replace(tmp, csv_path)
+    log.info(f"CSV header reconciled: {os.path.basename(csv_path)} "
+             f"({len(current_headers)} → {len(headers)} คอลัมน์)")
+
+
 def append_to_csv(csv_path: str, date_iso: str, rates: dict,
                   prev_rates: dict | None, rate_targets: list[dict]) -> dict:
     headers = get_csv_headers(rate_targets)
+    _reconcile_csv_header(csv_path, headers)
     changes: dict = {}
     for t in rate_targets:
         k = t["key"]

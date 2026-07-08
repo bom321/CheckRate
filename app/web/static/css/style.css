@@ -112,7 +112,7 @@ a.link:hover { text-decoration: underline; }
 /* ── Config ── */
 .cfg-bank { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   box-shadow: var(--shadow); margin-bottom: 18px; padding: 16px 18px; }
-.cfg-row { display: grid; grid-template-columns: 1fr 90px 90px 1.4fr 40px; gap: 8px;
+.cfg-row { display: grid; grid-template-columns: 1fr 1.3fr 1.1fr 1.1fr 70px 70px 1.2fr 32px; gap: 8px;
   align-items: center; margin-bottom: 6px; }
 .cfg-row.head { font-size: 12px; color: var(--muted); text-transform: uppercase; }
 .cfg-field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
