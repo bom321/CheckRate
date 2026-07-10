@@ -5,6 +5,7 @@
 กราฟแนวโน้ม จัดการค่า config และสั่งรันตรวจสอบด้วยตนเอง ออกแบบให้แพ็กเป็น Docker รันบน **Synology NAS** ได้
 
 รองรับ **หลายธนาคารพร้อมกัน (parallel)** และเพิ่มธนาคาร/รูปแบบ PDF ใหม่ได้ผ่านระบบ parser แบบ plugin
+ปัจจุบันมี parser พร้อมใช้งาน 2 ตัว: **SCB** (`scb_passbook`) และ **KBANK** (`kbank`)
 
 ---
 
@@ -12,12 +13,13 @@
 
 - **Monitor หลายธนาคารแบบขนาน** — ดาวน์โหลด + อ่านค่าทุกธนาคารที่เปิดใช้งานพร้อมกัน ธนาคารหนึ่งพังไม่ล้มทั้งระบบ
 - **Parser แบบ plugin** — โค้ดอ่านค่าของแต่ละธนาคารแยกเป็นไฟล์ (`app/monitor/banks/<code>.py`) เพิ่มธนาคารใหม่ที่มี PDF คนละรูปแบบได้โดยไม่แตะโค้ดส่วนกลาง
+- **ค้นหาประวัติย้อนหลัง** — `discover_year` สแกนหาไฟล์ประกาศเก่าทั้งปี (ธนาคารที่รองรับเท่านั้น) และ `--backfill` สร้าง CSV ใหม่จาก PDF ที่ดาวน์โหลดเก็บไว้แล้ว
 - **แจ้งเตือนอีเมลผ่าน SMTP + App Password** (ไม่พึ่ง Gmail API/OAuth) รองรับผู้รับหลายคน แก้ผ่านหน้าเว็บได้
 - **เว็บ Dashboard (FastAPI):**
   - **ภาพรวม** — 1 ตารางต่อ 1 ธนาคาร เทียบอัตราปัจจุบัน vs ครั้งก่อน + ไฮไลต์แถวที่เปลี่ยนแปลง
   - **รายละเอียดต่อธนาคาร** — กราฟแนวโน้ม (Chart.js) + ตารางประวัติ + ลิงก์เปิด PDF
   - **จัดการอัตรา** — เพิ่ม/ลบ/แก้ rate target (กำหนด key + ชื่อย่อเอง), เปิด-ปิดธนาคาร, แก้ลิงก์ดาวน์โหลดเอกสาร, ตั้งผู้รับอีเมล
-  - **Log & รัน** — ดู log, สั่ง "รันตรวจสอบทันที", ปุ่ม "ทดสอบส่งอีเมล"
+  - **Log & รัน** — ดู log, สั่ง "รันตรวจสอบทันที", ปุ่ม "ทดสอบส่งอีเมล", ปุ่มค้นหาประวัติทั้งปี (ทุกธนาคารที่รองรับ)
 - **ทำงานแบบ offline ได้** — Chart.js และฟอนต์ไทย (Noto Sans Thai) ฝังในโปรเจกต์ ไม่พึ่ง CDN
 - **พร้อม Docker** — `Dockerfile` + `docker-compose.yml` + ตั้งเวลาด้วย supercronic ในคอนเทนเนอร์
 
@@ -32,8 +34,10 @@ CheckRate/
 │   │   ├── rate_monitor.py      # orchestrator: รันทุกธนาคารแบบ parallel + CLI
 │   │   ├── common.py            # ฟังก์ชันร่วม: ดาวน์โหลด PDF, CSV, อีเมล, settings
 │   │   └── banks/               # 1 ไฟล์ = 1 ธนาคาร (โค้ดอ่านค่าแยกกัน)
-│   │       ├── __init__.py      # registry: parser id → module
-│   │       └── scb.py           # ตัวอ่านของ SCB
+│   │       ├── __init__.py      # registry: parser id → module + dispatch hook ทางเลือก
+│   │       ├── _tablekit.py     # helper อ่านตาราง/ข้อความไทยที่ใช้ร่วมกัน
+│   │       ├── scb.py           # ตัวอ่านของ SCB (parser id: scb_passbook)
+│   │       └── kbank.py         # ตัวอ่านของ KBANK (parser id: kbank)
 │   └── web/                     # เว็บ Dashboard (FastAPI)
 │       ├── main.py              # routes + API
 │       ├── data_access.py       # ชั้นอ่าน config/CSV/log/result
@@ -94,10 +98,15 @@ python -m uvicorn app.web.main:app --host 127.0.0.1 --port 8080
 #    เปิด http://localhost:8080
 
 # 4b. หรือรันตรวจสอบอัตราด้วยมือ
-python -m app.monitor.rate_monitor              # ทุกธนาคารที่เปิดใช้งาน (parallel)
-python -m app.monitor.rate_monitor --only SCB   # เฉพาะบางธนาคาร
-python -m app.monitor.rate_monitor --test-email # ทดสอบส่งอีเมล
+python -m app.monitor.rate_monitor                    # ทุกธนาคารที่เปิดใช้งาน (parallel)
+python -m app.monitor.rate_monitor --only SCB,KBANK   # เฉพาะบางธนาคาร (คั่นด้วย ,)
+python -m app.monitor.rate_monitor --backfill         # สร้าง CSV ใหม่จาก PDF ที่เก็บไว้
+python -m app.monitor.rate_monitor --discover-year    # สแกนหาประกาศทั้งปี (เฉพาะ bank ที่รองรับ)
+python -m app.monitor.rate_monitor --test-email       # ทดสอบส่งอีเมล
 ```
+
+> `--discover-year` ยิง request จำนวนมากไปยังเว็บธนาคาร ใช้เฉพาะตอนต้องการเติมประวัติย้อนหลัง
+> ไม่ควรตั้งให้รันอัตโนมัติ (SCB มี rate-limit — ตัว parser หน่วงเวลาและหยุดเองเมื่อตรวจพบว่าโดนบล็อก)
 
 > ตอนรันเว็บด้วยมือ ต้อง `set -a; . ./.env; set +a` **ก่อน** สั่ง uvicorn เสมอ ไม่งั้นปุ่มที่พึ่ง SMTP (ทดสอบส่งอีเมล) จะไม่ทำงาน เพราะ subprocess สืบทอด env จากตัว uvicorn
 
@@ -119,10 +128,22 @@ docker-compose up -d --build
 
 ## เพิ่มธนาคารใหม่
 
-1. สร้างไฟล์ `app/monitor/banks/<code>.py` มีฟังก์ชัน `extract_rates(pdf_bytes, bank)`
-   (และ effective-date ถ้ารูปแบบวันที่ต่างจากเดิม)
-2. ลงทะเบียน parser id ใน `app/monitor/banks/__init__.py`
+1. สร้างไฟล์ `app/monitor/banks/<code>.py` กำหนด `PARSER_IDS` และฟังก์ชัน `extract_rates(pdf_bytes, bank)`
+2. เพิ่มชื่อ module ลงใน `_MODULES` ที่ `app/monitor/banks/__init__.py`
 3. เพิ่มรายการธนาคารใน `banks_config.json` (ผ่านหน้า **จัดการอัตรา** บนเว็บ หรือแก้ไฟล์ตรง ๆ)
+   โดยตั้ง `parser` ให้ตรงกับ `PARSER_IDS` ของ module
+
+**Hook ทางเลือก** — ถ้า module ไม่มีฟังก์ชันเหล่านี้ ระบบจะข้ามหรือใช้ค่าเริ่มต้นให้เอง ไม่ error:
+
+| ฟังก์ชัน | ใช้เมื่อ | ถ้าไม่มี |
+|---|---|---|
+| `get_effective_date(pdf_bytes)` | รูปแบบวันที่ในเอกสารต่างจากค่าเริ่มต้น | ใช้ `common.get_effective_date` |
+| `resolve_latest_url(bank)` | URL ประกาศล่าสุดไม่คงที่ (เช่น ฝังวันที่ไว้ใน path) | ใช้ `bank["latest_pdf_url"]` ตรง ๆ |
+| `discover_year(bank, year)` | รองรับการสแกนหาประกาศย้อนหลังทั้งปี | ปุ่ม/คำสั่ง discover-year จะข้ามธนาคารนี้ |
+
+ตัวช่วยอ่านตารางและข้อความไทยที่ใช้ร่วมกันได้อยู่ใน `banks/_tablekit.py` (`thai_skeleton`, `kw_in_line`,
+`row_values`, `pick_amount_tier`, ฯลฯ) — `thai_skeleton` มีไว้แก้ปัญหา pdfplumber สลับตำแหน่งสระ/แทรกช่องว่าง
+กลางคำไทย
 
 ไม่ต้องแก้ `rate_monitor.py` หรือ `common.py` — flow ส่วนกลางเป็น generic
 
@@ -130,4 +151,7 @@ docker-compose up -d --build
 
 ## Tech stack
 
-Python 3.13 · FastAPI · Uvicorn · Jinja2 · pdfplumber · Chart.js · supercronic · Docker
+Python 3.13 · FastAPI · Uvicorn · Jinja2 · pdfplumber · curl_cffi · Chart.js · supercronic · Docker
+
+> `curl_cffi` ใช้ impersonate TLS fingerprint ของ Chrome เพื่อดาวน์โหลด PDF ของ KBANK ที่มี bot-protection
+> อยู่หน้าไฟล์ (มี manylinux wheel พร้อมใช้ ไม่ต้องแก้ `Dockerfile`)
