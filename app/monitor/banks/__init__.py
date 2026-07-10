@@ -14,7 +14,7 @@ import importlib
 from ..common import log, get_effective_date as _default_effective_date
 
 # รายชื่อ module ของแต่ละธนาคาร (เพิ่มไฟล์ใหม่ที่นี่)
-_MODULES = ["scb"]
+_MODULES = ["scb", "kbank"]
 
 # parser_id -> module object
 _REGISTRY: dict = {}
@@ -49,3 +49,26 @@ def effective_date(pdf_bytes: bytes, bank: dict) -> str | None:
     if mod is not None and hasattr(mod, "get_effective_date"):
         return mod.get_effective_date(pdf_bytes)
     return _default_effective_date(pdf_bytes)
+
+
+def resolve_latest_url(bank: dict) -> str | None:
+    """หา URL ของประกาศล่าสุด — ใช้ resolve_latest_url ของ bank module ถ้ามี
+    (เช่น KBANK ที่ URL ฝังวันที่ ไม่มี URL คงที่แบบ SCB) ไม่งั้นใช้ bank['latest_pdf_url'] ตรง ๆ"""
+    mod = _REGISTRY.get(bank.get("parser", ""))
+    if mod is not None and hasattr(mod, "resolve_latest_url"):
+        return mod.resolve_latest_url(bank)
+    return bank.get("latest_pdf_url") or None
+
+
+def supports_discover_year(bank: dict) -> bool:
+    """True ถ้า bank module รองรับการสแกนหาประวัติทั้งปีแบบละเอียด (discover_year)"""
+    mod = _REGISTRY.get(bank.get("parser", ""))
+    return mod is not None and hasattr(mod, "discover_year")
+
+
+def discover_year(bank: dict, year: int | None = None) -> list[str] | None:
+    """สแกนหาประกาศทั้งปีแบบละเอียด (manual, ไม่ใช้ทุกวัน) — คืน None ถ้า bank module ไม่รองรับ"""
+    mod = _REGISTRY.get(bank.get("parser", ""))
+    if mod is not None and hasattr(mod, "discover_year"):
+        return mod.discover_year(bank, year)
+    return None

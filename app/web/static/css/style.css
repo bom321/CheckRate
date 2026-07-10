@@ -69,6 +69,10 @@ table.rates thead th {
   font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
   color: var(--muted); background: #fbfcfe; border-bottom: 1px solid var(--line);
 }
+table.rates thead th .col-date {
+  display: inline-block; margin-top: 2px; text-transform: none;
+  font-size: 11px; font-weight: 400; letter-spacing: normal; color: var(--muted); opacity: .85;
+}
 table.rates td.num, table.rates th.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.rates tbody tr { border-bottom: 1px solid var(--line); }
 table.rates tbody tr:last-child { border-bottom: none; }

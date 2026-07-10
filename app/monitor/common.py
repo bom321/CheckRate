@@ -99,15 +99,22 @@ def get_bank_paths(bank_code: str) -> tuple[str, str]:
     return pdf_dir, csv_path
 
 
+def change_col(key: str) -> str:
+    """ชื่อคอลัมน์ change ของ target — รองรับ key ที่ไม่ได้ขึ้นต้นด้วย 'rate_'
+    (เช่น key='saving_epb' → 'change_saving_epb', key='rate_3m_1m' → 'change_3m_1m')"""
+    _, sep, suffix = key.partition("rate_")
+    return f"change_{suffix if sep else key}"
+
+
 def get_csv_headers(rate_targets: list[dict]) -> list[str]:
     headers = ["effective_date"]
     for t in rate_targets:
         k = t["key"]
-        headers += [k, f"change_{k.split('rate_')[1]}"]
+        headers += [k, change_col(k)]
     return headers
 
 # ─────────────────────────── PDF Download ───────────────────────────
-def download_pdf(url: str, referer: str) -> bytes | None:
+def _download_pdf_curl(url: str, referer: str) -> bytes | None:
     UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
     try:
@@ -126,23 +133,73 @@ def download_pdf(url: str, referer: str) -> bytes | None:
         log.error(f"download_pdf exception: {e}")
         return None
 
+
+def _download_pdf_impersonate(url: str, referer: str) -> bytes | None:
+    """ดาวน์โหลดผ่าน curl_cffi (เลียนลายนิ้วมือ TLS ของ Chrome) — ใช้กับเว็บที่มี
+    bot protection แบบ Akamai/Cloudflare ที่บล็อก curl ธรรมดา (เช่น KBANK)"""
+    try:
+        from curl_cffi import requests as cffi_requests
+    except ImportError:
+        log.error("download_pdf (impersonate): ไม่ได้ติดตั้ง curl_cffi (pip install curl_cffi)")
+        return None
+    try:
+        r = cffi_requests.get(
+            url, impersonate="chrome", timeout=60,
+            headers={"Referer": referer, "Accept": "application/pdf,*/*"},
+        )
+        data = r.content
+        if data and data[:4] == b"%PDF":
+            return data
+        log.error(f"download_pdf (impersonate): ไม่ใช่ PDF (HTTP {r.status_code}, "
+                  f"{len(data)} bytes, starts: {data[:20]})")
+        return None
+    except Exception as e:
+        log.error(f"download_pdf (impersonate) exception: {e}")
+        return None
+
+
+def download_pdf(url: str, referer: str, mode: str = "curl") -> bytes | None:
+    """ดาวน์โหลด PDF ประกาศ mode='curl' (ค่าเริ่มต้น, SCB ฯลฯ) หรือ 'impersonate'
+    (bypass bot-protection ด้วย curl_cffi — ใช้กับธนาคารที่ตั้ง fetch_mode: curl-impersonate)"""
+    if mode == "impersonate":
+        return _download_pdf_impersonate(url, referer)
+    return _download_pdf_curl(url, referer)
+
 # ─────────────────────────── Date Extraction (Thai, generic) ───────────────────────────
+# pdfplumber บางครั้งถอดข้อความไทยแล้วสระสลับตำแหน่ง/มีช่องว่างแทรกกลางคำ (เช่น "มีนาคม" -> "มนี าคม" —
+# ี กับ น สลับกันด้วยซ้ำ ไม่ใช่แค่เว้นวรรค) ทำให้ regex ชื่อเดือนแบบตรงตัวพลาดได้ จึงจับคู่ด้วย "skeleton"
+# (เก็บเฉพาะพยัญชนะไทย ตัดสระ/วรรณยุกต์/เว้นวรรคทิ้ง) เทคนิคเดียวกับ banks/_tablekit.py แต่คัดลอกแยกไว้
+# ที่นี่ (ไม่ import จาก banks/ เพราะ banks/__init__.py import จาก common.py อยู่แล้ว — จะเกิด circular import)
+_THAI_CONSONANT_RE = re.compile(r"[ก-ฮ]|[a-z0-9]")
+
+
+def _thai_skeleton(s: str) -> str:
+    return "".join(_THAI_CONSONANT_RE.findall(s.lower()))
+
+
+_DATE_CANDIDATE_RE = re.compile(r"(\d{1,2})\s*(.{2,15}?)\s*(\d{4})")
+
+
 def get_effective_date(pdf_bytes: bytes) -> str | None:
     """ดึงวันที่มีผลจาก PDF → YYYY-MM-DD (ค.ศ.). Thai date parser แบบทั่วไป
-    ธนาคารที่มี format ต่างสามารถ override ฟังก์ชันนี้ใน banks/<code>.py ได้"""
-    month_pat = "|".join(THAI_MONTHS.keys())
-    date_re = re.compile(rf"(\d{{1,2}})\s+({month_pat})\s+(\d{{4}})")
+    ธนาคารที่มี format ต่างสามารถ override ฟังก์ชันนี้ใน banks/<code>.py ได้
+    จับคู่ชื่อเดือนด้วย skeleton (ดูหมายเหตุด้านบน) ทนข้อความไทยที่ pdfplumber ถอดเพี้ยน"""
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             text = pdf.pages[0].extract_text() or ""
-            m = date_re.search(text)
-            if m:
-                day   = int(m.group(1))
-                month = THAI_MONTHS[m.group(2)]
-                year  = int(m.group(3)) - 543
-                return f"{year:04d}-{month:02d}-{day:02d}"
     except Exception as e:
         log.error(f"get_effective_date: {e}")
+        return None
+
+    for m in _DATE_CANDIDATE_RE.finditer(text):
+        day_s, mid, year_s = m.groups()
+        mid_sk = _thai_skeleton(mid)
+        for month_name, month_num in THAI_MONTHS.items():
+            if _thai_skeleton(month_name) == mid_sk:
+                try:
+                    return f"{int(year_s) - 543:04d}-{month_num:02d}-{int(day_s):02d}"
+                except ValueError:
+                    continue
     return None
 
 # ─────────────────────────── CSV Helpers ───────────────────────────
@@ -202,15 +259,23 @@ def append_to_csv(csv_path: str, date_iso: str, rates: dict,
     changes: dict = {}
     for t in rate_targets:
         k = t["key"]
-        chg_k = f"change_{k.split('rate_')[1]}"
-        changes[chg_k] = round(rates[k] - prev_rates[k], 4) if prev_rates else None
+        chg_k = change_col(k)
+        if k in rates and prev_rates and prev_rates.get(k) is not None:
+            changes[chg_k] = round(rates[k] - prev_rates[k], 4)
+        else:
+            changes[chg_k] = None
 
     row = {"effective_date": date_iso}
     for t in rate_targets:
         k     = t["key"]
-        chg_k = f"change_{k.split('rate_')[1]}"
-        row[k]     = f"{rates[k]:.2f}"
-        row[chg_k] = _fmt_change(changes[chg_k])
+        chg_k = change_col(k)
+        # target ที่ถูกข้าม (ไม่มีใน rates) → เขียนช่องว่างไว้ ไม่ทำให้ทั้งแถวพัง
+        if k in rates:
+            row[k]     = f"{rates[k]:.2f}"
+            row[chg_k] = _fmt_change(changes[chg_k])
+        else:
+            row[k]     = ""
+            row[chg_k] = ""
 
     file_exists = os.path.isfile(csv_path) and os.path.getsize(csv_path) > 0
     with open(csv_path, "a" if file_exists else "w", newline="", encoding="utf-8-sig") as f:
@@ -228,7 +293,7 @@ def check_warnings(rates: dict, prev_rates: dict | None, rate_targets: list[dict
     warnings = []
     for t in rate_targets:
         k = t["key"]
-        if prev_rates.get(k) is not None:
+        if k in rates and prev_rates.get(k) is not None:
             change = rates[k] - prev_rates[k]
             if abs(change) > RATE_CHANGE_THRESHOLD:
                 msg = f"{t['label']}: เปลี่ยนแปลง {change:+.2f}% (เกินกว่า ±{RATE_CHANGE_THRESHOLD}%)"

@@ -156,28 +156,25 @@ def bank_detail(request: Request, code: str):
             series.append(float(v) if v is not None else None)
         datasets.append({"key": key, "label": t.get("alias") or t.get("label") or key, "data": series})
 
-    # ตารางประวัติ (ใหม่สุดก่อน) + ลิงก์ PDF ต่อแถว
-    hist_rows = []
-    for r in reversed(history):
-        eff = r.get("effective_date", "")
-        cells = []
-        for t in targets:
-            key = t["key"]
-            suffix = key.split("rate_")[1] if "rate_" in key else key
-            cells.append({
-                "rate": _fmt_rate(r.get(key)),
-                "change": r.get(f"change_{suffix}", ""),
-            })
-        hist_rows.append({
-            "effective_date": eff, "cells": cells,
-            "pdf": da.pdf_for_date(code, eff),
-        })
+    # ตารางประวัติแบบสลับแกน: วันที่ = คอลัมน์ (ใหม่สุดก่อน), ประเภทอัตรา = แถว
+    # แสดงย้อนหลังไม่เกิน 5 ครั้งล่าสุดก็พอ
+    recent = list(reversed(history))[:5]     # history เรียงเก่า→ใหม่, reversed = ใหม่→เก่า
+    date_cols = [{"effective_date": r.get("effective_date", ""),
+                  "pdf": da.pdf_for_date(code, r.get("effective_date", ""))}
+                 for r in recent]
+    target_rows = []
+    for t in targets:
+        key = t["key"]
+        cells = [{"rate": _fmt_rate(r.get(key)),
+                  "change": r.get(da.common.change_col(key), "")} for r in recent]
+        target_rows.append({"label": t.get("alias") or t.get("label") or key, "cells": cells})
 
     return templates.TemplateResponse(request, "bank_detail.html", {
         "active": "overview", "bank": bank, "targets": targets,
         "chart_labels": labels, "chart_datasets": datasets,
-        "hist_rows": hist_rows, "has_data": bool(history),
+        "date_cols": date_cols, "target_rows": target_rows, "has_data": bool(history),
         "last_checked": da.last_checked(code),
+        "supports_discover_year": da.supports_discover_year(bank),
     })
 
 
@@ -221,6 +218,10 @@ def _validate_banks(banks) -> str | None:
             if k in keys:
                 return f"[{code}] key ซ้ำ: {k}"
             keys.append(k)
+            # ต้องมี row_keyword หรือ tenor_months อย่างน้อยหนึ่งอย่าง ไม่งั้นจะหาแถวไม่เจอ
+            if not t.get("row_keyword") and not t.get("tenor_months"):
+                return (f"[{code}] target '{k}': ต้องระบุ 'Row (ผลิตภัณฑ์/ระยะเวลา)' "
+                        f"หรือ 'เดือน' อย่างน้อยหนึ่งอย่าง")
     return None
 
 
@@ -286,6 +287,44 @@ async def api_run(request: Request):
         args = ["--only", only if isinstance(only, str) else ",".join(only)]
 
     if not _start_job(args, kind="run", only=only):
+        return JSONResponse({"ok": False, "error": "มีงานกำลังรันอยู่แล้ว"}, status_code=409)
+    return {"ok": True, "started": True}
+
+
+@app.post("/api/backfill")
+async def api_backfill(request: Request):
+    """สร้าง CSV ใหม่จาก PDF ที่เก็บไว้ — ใช้เติมค่าของ rate_target ที่เพิ่งเพิ่มย้อนหลัง"""
+    only = None
+    try:
+        body = await request.json()
+        only = (body or {}).get("only")
+    except Exception:
+        only = None
+
+    args = ["--backfill"]
+    if only:
+        args += ["--only", only if isinstance(only, str) else ",".join(only)]
+
+    if not _start_job(args, kind="backfill", only=only):
+        return JSONResponse({"ok": False, "error": "มีงานกำลังรันอยู่แล้ว"}, status_code=409)
+    return {"ok": True, "started": True}
+
+
+@app.post("/api/discover-year")
+async def api_discover_year(request: Request):
+    """สแกนหาประกาศทั้งปีแบบละเอียด (เฉพาะธนาคารที่รองรับ เช่น KBANK) — ใช้นานกว่าปกติ กดด้วยมือเป็นครั้งคราว"""
+    only = None
+    try:
+        body = await request.json()
+        only = (body or {}).get("only")
+    except Exception:
+        only = None
+
+    args = ["--discover-year"]
+    if only:
+        args += ["--only", only if isinstance(only, str) else ",".join(only)]
+
+    if not _start_job(args, kind="discover-year", only=only):
         return JSONResponse({"ok": False, "error": "มีงานกำลังรันอยู่แล้ว"}, status_code=409)
     return {"ok": True, "started": True}
 

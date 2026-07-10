@@ -11,6 +11,7 @@ import os, csv, json
 from datetime import datetime
 
 from ..monitor import common
+from ..monitor import banks as monitor_banks
 
 DATA_DIR = common.OUTPUT_DIR
 LOG_PATH = common.LOG_PATH
@@ -34,6 +35,11 @@ def get_bank(code: str) -> dict | None:
     return None
 
 
+def supports_discover_year(bank: dict) -> bool:
+    """True ถ้าธนาคารนี้รองรับการสแกนหาประวัติทั้งปีแบบละเอียด (เช่น KBANK)"""
+    return monitor_banks.supports_discover_year(bank)
+
+
 def save_banks(banks: list[dict]) -> None:
     """เขียน banks_config.json แบบ atomic (temp → replace)"""
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -54,15 +60,22 @@ def bank_has_csv(code: str) -> bool:
 
 
 def read_history(code: str) -> list[dict]:
-    """คืนทุกแถวของ CSV (list ของ dict). ถ้าไม่มีไฟล์ → []"""
+    """คืนทุกแถวของ CSV (list ของ dict) เรียงตาม effective_date + กันแถวซ้ำ.
+    ถ้าไม่มีไฟล์ → []. ทนกรณี CSV สลับลำดับ/มีวันที่ซ้ำ (เก็บแถวหลังสุดของแต่ละวันที่)"""
     path = _csv_path(code)
     try:
         with open(path, "r", encoding="utf-8-sig") as f:
-            return list(csv.DictReader(f))
+            rows = list(csv.DictReader(f))
     except FileNotFoundError:
         return []
     except Exception:
         return []
+    by_date: dict[str, dict] = {}
+    for r in rows:
+        d = (r.get("effective_date") or "").strip()
+        if d:
+            by_date[d] = r          # วันที่ซ้ำ → เก็บแถวหลังสุด
+    return [by_date[d] for d in sorted(by_date)]
 
 
 def latest_two_rows(code: str) -> tuple[dict | None, dict | None]:

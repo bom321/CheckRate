@@ -7,6 +7,10 @@
 
 <div class="toolbar">
   <button id="run-bank" class="btn primary" data-code="{{ bank.code }}">▶ รันตรวจสอบธนาคารนี้</button>
+  <button id="backfill-bank" class="btn" data-code="{{ bank.code }}" title="สร้างข้อมูลย้อนหลังจาก PDF ที่เก็บไว้ — ใช้เมื่อเพิ่มอัตราที่ติดตามใหม่">↻ เติมข้อมูลย้อนหลัง</button>
+  {% if supports_discover_year %}
+  <button id="discover-year-bank" class="btn" data-code="{{ bank.code }}" title="สแกนหาประกาศทั้งปีแบบละเอียด (ใช้เวลานาน) เผื่อมีไฟล์ที่การตรวจสอบปกติพลาดไป — กดเป็นครั้งคราวพอ">🔍 ค้นหาประวัติทั้งปีอย่างละเอียด</button>
+  {% endif %}
   <span id="run-status" class="status-pill idle">พร้อมทำงาน</span>
 </div>
 <div id="run-output" class="output-box" style="display:none"></div>
@@ -17,21 +21,20 @@
 </div>
 
 <div class="bank-card">
-  <div class="bank-head"><div class="bank-title">ประวัติการประกาศ</div></div>
+  <div class="bank-head"><div class="bank-title">ประวัติการประกาศ (5 ครั้งล่าสุด)</div></div>
   <div style="overflow-x:auto">
   <table class="rates">
     <thead>
       <tr>
-        <th>วันมีผล</th>
-        {% for t in targets %}<th class="num">{{ t.alias or t.label or t.key }}</th>{% endfor %}
-        <th>PDF</th>
+        <th>ประเภทอัตรา</th>
+        {% for d in date_cols %}<th class="num">{{ d.effective_date }}</th>{% endfor %}
       </tr>
     </thead>
     <tbody>
-      {% for row in hist_rows %}
+      {% for tr in target_rows %}
       <tr>
-        <td>{{ row.effective_date }}</td>
-        {% for c in row.cells %}
+        <td>{{ tr.label }}</td>
+        {% for c in tr.cells %}
         <td class="num">
           {{ (c.rate ~ '%') if c.rate is not none else '-' }}
           {% if c.change and c.change not in ('0.00', '') %}
@@ -39,9 +42,14 @@
           {% endif %}
         </td>
         {% endfor %}
-        <td>{% if row.pdf %}<a class="link" href="/pdf/{{ bank.code }}/{{ row.pdf }}" target="_blank">เปิด PDF</a>{% else %}-{% endif %}</td>
       </tr>
       {% endfor %}
+      <tr>
+        <td>PDF</td>
+        {% for d in date_cols %}
+        <td class="num">{% if d.pdf %}<a class="link" href="/pdf/{{ bank.code }}/{{ d.pdf }}" target="_blank">เปิด</a>{% else %}-{% endif %}</td>
+        {% endfor %}
+      </tr>
     </tbody>
   </table>
   </div>

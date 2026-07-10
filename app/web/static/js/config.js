@@ -71,7 +71,7 @@
   }
 
   function readFormIntoState() {
-    document.querySelectorAll('.cfg-bank').forEach(card => {
+    container.querySelectorAll('.cfg-bank').forEach(card => {
       const bIdx = Number(card.dataset.bankIdx);
       const b = state.banks[bIdx];
       b.enabled = card.querySelector('.b-enabled').checked;
@@ -107,6 +107,7 @@
   function wireEvents() {
     container.querySelectorAll('.add-target').forEach(btn => {
       btn.addEventListener('click', () => {
+        readFormIntoState();
         const card = btn.closest('.cfg-bank');
         const bIdx = Number(card.dataset.bankIdx);
         state.banks[bIdx].rate_targets.push({ key: '', tenor_months: null, amount_m: null, label: '' });
@@ -132,6 +133,9 @@
         if (!t.key) return `[${b.code}] มี rate target ที่ยังไม่ได้ตั้ง key`;
         if (seen.has(t.key)) return `[${b.code}] key ซ้ำ: ${t.key}`;
         seen.add(t.key);
+        if (!t.row_keyword && !t.tenor_months) {
+          return `[${b.code}] '${t.key}': ต้องระบุ "Row (ผลิตภัณฑ์/ระยะเวลา)" หรือ "เดือน" อย่างน้อยหนึ่งอย่าง`;
+        }
       }
     }
     return null;

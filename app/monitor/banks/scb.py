@@ -21,9 +21,12 @@ parser id: "scb_passbook"
   (ทางเลือก) get_effective_date(pdf_bytes) -> str | None  ถ้า format วันที่ต่างจากค่าเริ่มต้น
 """
 
-import io, re
+import io, json, os, random, re, subprocess, time
+from datetime import datetime
+
 import pdfplumber
 
+from .. import common
 from ..common import log
 from ._tablekit import (
     thai_skeleton, kw_in_line, line_equals_kw, row_values,
@@ -152,6 +155,8 @@ def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:
 
     result: dict = {}
     tiers_used: dict = {}
+    failed: list[str] = []
+    # target ที่ตั้งค่าผิด/หาไม่เจอ จะถูก "ข้าม" ไม่ทำให้ทั้งธนาคารล้ม (target อื่นยังอ่านต่อได้)
 
     for target in rate_targets:
         key = target["key"]
@@ -159,39 +164,185 @@ def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:
         tenor = target.get("tenor_months")
         row_kw = target.get("row_keyword") or (f"{tenor} เดือน" if tenor else None)
         if not row_kw:
-            log.error(f"extract_rates [{key}]: ไม่มี row_keyword และไม่มี tenor_months ให้สร้าง default")
-            return None
+            log.error(f"extract_rates [{key}]: ไม่มี row_keyword และไม่มี tenor_months — ข้าม target นี้")
+            failed.append(key); continue
 
         depositor_value = target.get("depositor", DEFAULT_DEPOSITOR)
         col = resolve_depositor(depositor_value)
         if col is None:
-            log.error(f"extract_rates [{key}]: ไม่รู้จัก depositor '{depositor_value}'")
-            return None
+            log.error(f"extract_rates [{key}]: ไม่รู้จัก depositor '{depositor_value}' — ข้าม target นี้")
+            failed.append(key); continue
 
         line, desc = _find_row_line(lines, section_kw, row_kw, target.get("amount_m"))
         if line is None:
-            log.error(f"extract_rates [{key}]: ไม่พบแถวที่ตรง section='{section_kw}' row='{row_kw}'")
-            return None
+            log.error(f"extract_rates [{key}]: ไม่พบแถวที่ตรง section='{section_kw}' row='{row_kw}' — ข้าม target นี้")
+            failed.append(key); continue
 
         vals = row_values(line)
         if len(vals) != EXPECTED_COLUMNS:
             log.error(f"extract_rates [{key}]: บรรทัดมี {len(vals)} คอลัมน์ (คาดว่า {EXPECTED_COLUMNS}) "
-                      f"— ถอดข้อมูลไม่น่าเชื่อถือ ปฏิเสธเพื่อกันอ่านผิดคอลัมน์: {line}")
-            return None
+                      f"— ถอดข้อมูลไม่น่าเชื่อถือ ข้าม target นี้กันอ่านผิดคอลัมน์: {line}")
+            failed.append(key); continue
 
         raw_v = vals[col - 1]
         if raw_v == "-":
-            log.error(f"extract_rates [{key}]: ไม่มีอัตราสำหรับคอลัมน์ {col} (แสดง '-') ในบรรทัด: {line}")
-            return None
+            log.error(f"extract_rates [{key}]: ไม่มีอัตราสำหรับคอลัมน์ {col} (แสดง '-') — ข้าม target นี้: {line}")
+            failed.append(key); continue
         try:
             rate = float(raw_v)
         except ValueError:
-            log.error(f"extract_rates [{key}]: ค่าไม่ใช่ตัวเลข: {raw_v!r}")
-            return None
+            log.error(f"extract_rates [{key}]: ค่าไม่ใช่ตัวเลข: {raw_v!r} — ข้าม target นี้")
+            failed.append(key); continue
 
         result[key] = rate
         tiers_used[key] = desc
         log.info(f"  {target.get('label', key)}: {rate:.2f}%  ← {desc}")
 
+    if not result:
+        log.error("extract_rates: อ่านค่าไม่ได้เลยสักตัว (ทุก target ล้มเหลว)")
+        return None
+    if failed:
+        log.warning(f"extract_rates: ข้าม {len(failed)} target ที่ตั้งค่าผิด/หาไม่เจอ: {', '.join(failed)} "
+                    f"(อีก {len(result)} ตัวอ่านได้ปกติ)")
+
     result["tiers_used"] = tiers_used
     return result
+
+
+# ─────────────────────────── Full-year discovery (manual, ละเอียด) ───────────────────────────
+# SCB เก็บประกาศเก่าไว้ที่ URL รูปแบบ:
+#   https://www.scb.co.th/.../deposits/{ปี ค.ศ.}/deposit{พ.ศ. 2 หลักท้าย}-{เลขลำดับประกาศ 2 หลัก}.pdf
+# เลขท้ายเป็น "เลขที่ประกาศของปี พ.ศ. นั้น" (ตรงกับ "ครั้งที่ N/พ.ศ." ที่พิมพ์ในตัวประกาศ) **ไม่ใช่เดือนปฏิทิน**
+# — ยืนยันจากเนื้อหาจริง: deposit69-04→9เม.ย./69-05→28เม.ย./69-06→23พ.ค./69-07→29พ.ค.69 (เลขไม่ตรงเดือนในชื่อไฟล์)
+#
+# ⚠️ SCB มีระบบจำกัดอัตรา request (Incapsula) — ยิงถี่เกินไปโดนบล็อกชั่วคราวได้จริง (ทดสอบแล้ว: ยิง ~9
+# request ไม่หน่วงเวลา ทำให้แม้แต่ URL ที่ใช้ตรวจสอบปกติทุกวันก็โดนบล็อกไปด้วยชั่วคราว — บล็อกเป็น
+# rate-based ไม่ถาวร แต่ระยะเวลาไม่แน่นอน ~1-20 นาที) จึงต้อง:
+#   1. หน่วงเวลา (+jitter) ระหว่างทุก request เสมอ (ห้ามลดโดยไม่ทดสอบผลกระทบก่อน)
+#   2. ตรวจจับสัญญาณบล็อก (หน้า challenge มี "_Incapsula_Resource") แล้ว**หยุดทันที** ไม่ใช่นับเป็น
+#      "ไม่พบไฟล์" ธรรมดา (ป้องกันยิงต่อตอนโดนบล็อกซึ่งจะยิ่งแย่ลง)
+#   3. จำความคืบหน้า (resume state) ข้าม sequence ที่ยืนยันมีไฟล์แล้ว ไม่ยิง request ซ้ำทุกครั้งที่กด
+REQUEST_DELAY_SEC = 6.0     # หน่วงเวลาฐานระหว่างแต่ละ request (บวก jitter เพิ่ม) ห้ามลดโดยไม่ทดสอบก่อน
+REQUEST_JITTER_SEC = 2.0    # สุ่มเพิ่มเวลาหน่วง 0-2 วิ กัน pattern สม่ำเสมอเกินไป
+MAX_SEQ_PER_YEAR = 30       # เพดานเลขลำดับสูงสุดที่ไล่ (SCB ประกาศจริง ~8-15 ครั้ง/ปี กันไว้เกินพอ)
+MAX_CONSECUTIVE_MISSES = 3  # เจอ "ไม่พบ" ติดกันกี่ครั้งถึงหยุด (แปลว่าน่าจะหมดแล้ว — ไม่รวมกรณีโดนบล็อก)
+
+
+def _discover_state_path(code: str) -> str:
+    return os.path.join(common.OUTPUT_DIR, f"{code.lower()}_discover_state.json")
+
+
+def _load_confirmed_seq(code: str, year: int) -> int:
+    """คืนเลขลำดับสูงสุดที่ยืนยันแล้วว่ามีไฟล์จริง (ของปีที่ระบุ) — 0 ถ้ายังไม่เคยสแกน/คนละปี"""
+    try:
+        with open(_discover_state_path(code)) as f:
+            state = json.load(f)
+        if state.get("year") == year:
+            return int(state.get("confirmed_through_seq", 0))
+    except Exception:
+        pass
+    return 0
+
+
+def _save_confirmed_seq(code: str, year: int, seq: int) -> None:
+    try:
+        with open(_discover_state_path(code), "w") as f:
+            json.dump({"year": year, "confirmed_through_seq": seq}, f)
+    except Exception as e:
+        log.warning(f"scb: บันทึก discover_state ไม่ได้: {e}")
+
+
+def _fetch_raw(url: str, referer: str) -> bytes:
+    """เหมือน common._download_pdf_curl แต่คืน raw bytes เสมอ (ไม่ทิ้งถ้าไม่ใช่ PDF) เพื่อให้
+    discover_year ตรวจจับสัญญาณบล็อกของ Incapsula ได้ (แยกจาก 'ไม่พบไฟล์' ธรรมดา)"""
+    UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+    try:
+        r = subprocess.run(
+            ["curl", "-s", "-L", "--max-time", "60",
+             "-A", UA, "-H", f"Referer: {referer}", "-H", "Accept: application/pdf,*/*",
+             url],
+            capture_output=True, timeout=70,
+        )
+        return r.stdout
+    except Exception as e:
+        log.error(f"scb._fetch_raw exception: {e}")
+        return b""
+
+
+def _is_blocked(raw: bytes) -> bool:
+    return b"Incapsula" in raw or b"_Incapsula_Resource" in raw
+
+
+def discover_year(bank: dict, year: int | None = None) -> list[str]:
+    """สแกนหาไฟล์ประกาศทั้งปี (ค.ศ.) จาก archive URL แบบเลขลำดับ (ไม่ใช่ไล่ทุกวันแบบ KBANK)
+    ดาวน์โหลด+บันทึกเฉพาะไฟล์ที่ยังไม่มีในเครื่อง (เทียบจากวันที่จริงในเนื้อหา PDF ไม่ใช่เดาจากชื่อไฟล์)
+    หน่วงเวลาระหว่าง request เสมอกันโดนบล็อก, หยุดทันทีถ้าเจอสัญญาณบล็อก, และข้าม sequence ที่เคย
+    ยืนยันแล้วในรอบก่อนหน้า (resume — ไม่โหลดซ้ำ) คืนรายชื่อไฟล์ที่บันทึกใหม่ในรอบนี้"""
+    code = bank["code"]
+    yr = year or datetime.now().year
+    be_suffix = (yr + 543) % 100
+    referer = bank.get("referer", "")
+
+    pdf_dir, _ = common.get_bank_paths(code)
+    os.makedirs(pdf_dir, exist_ok=True)
+    existing_dates = set()
+    for f in os.listdir(pdf_dir):
+        m = re.match(rf"{code.lower()}_deposit_(\d{{4}}-\d{{2}}-\d{{2}})\.pdf$", f)
+        if m:
+            existing_dates.add(m.group(1))
+
+    confirmed_seq = _load_confirmed_seq(code, yr)
+    start_seq = confirmed_seq + 1
+
+    saved: list[str] = []
+    misses = 0
+    blocked = False
+    log.info(f"scb.discover_year: สแกนปี {yr} (พ.ศ. {yr + 543}) เลขลำดับ {start_seq}-{MAX_SEQ_PER_YEAR} "
+             f"(ข้าม 1-{confirmed_seq} ที่ยืนยันแล้ว) หน่วง ~{REQUEST_DELAY_SEC}-"
+             f"{REQUEST_DELAY_SEC + REQUEST_JITTER_SEC:.0f}s/request — ใช้เวลานาน")
+
+    for seq in range(start_seq, MAX_SEQ_PER_YEAR + 1):
+        url = (f"https://www.scb.co.th/content/media/personal-banking/rates-fees/deposits/"
+               f"{yr}/deposit{be_suffix:02d}-{seq:02d}.pdf")
+        raw = _fetch_raw(url, referer)
+        time.sleep(REQUEST_DELAY_SEC + random.uniform(0, REQUEST_JITTER_SEC))
+
+        if _is_blocked(raw):
+            log.warning(f"scb.discover_year: โดน rate-limit บล็อกที่เลขลำดับ {seq:02d} — หยุดสแกนทันที "
+                        f"(รอสักครู่ค่อยกดใหม่ ความคืบหน้าที่ทำได้แล้วถูกบันทึกไว้)")
+            blocked = True
+            break
+
+        if not raw or raw[:4] != b"%PDF":
+            misses += 1
+            if misses >= MAX_CONSECUTIVE_MISSES:
+                log.info(f"scb.discover_year: ไม่พบติดกัน {misses} ครั้ง (ที่เลขลำดับ {seq}) — หยุดสแกนปีนี้")
+                break
+            continue
+        misses = 0
+
+        # ยืนยันแล้วว่า sequence นี้มีไฟล์จริง — เลื่อน confirmed_seq ทันที (กันเสียความคืบหน้าถ้าโดนบล็อกถัดไป)
+        confirmed_seq = seq
+        _save_confirmed_seq(code, yr, confirmed_seq)
+
+        eff_date = common.get_effective_date(raw)
+        if eff_date is None:
+            log.warning(f"scb.discover_year: seq={seq:02d} ดาวน์โหลดได้แต่หาวันที่ในเนื้อหาไม่เจอ — ข้าม")
+            continue
+        if eff_date in existing_dates:
+            continue
+
+        fname = f"{code.lower()}_deposit_{eff_date}.pdf"
+        with open(os.path.join(pdf_dir, fname), "wb") as f:
+            f.write(raw)
+        saved.append(fname)
+        existing_dates.add(eff_date)
+        log.info(f"scb.discover_year: พบและบันทึก {fname} (seq={seq:02d})")
+
+    if not blocked:
+        _save_confirmed_seq(code, yr, confirmed_seq)  # เซฟรอบสุดท้าย (เผื่อจบ loop ด้วย miss-streak)
+
+    log.info(f"scb.discover_year: เสร็จสิ้น — พบไฟล์ใหม่ {len(saved)} ไฟล์: {', '.join(saved) or '-'} "
+             f"(ยืนยันถึงเลขลำดับ {confirmed_seq})")
+    return saved

@@ -33,8 +33,8 @@
       <thead>
         <tr>
           <th>ประเภท</th>
-          <th class="num">อัตราปัจจุบัน</th>
-          <th class="num">อัตราก่อนหน้า</th>
+          <th class="num">อัตราปัจจุบัน<br><span class="col-date">({{ item.effective_date or '-' }})</span></th>
+          <th class="num">อัตราก่อนหน้า<br><span class="col-date">({{ item.prev_date or '-' }})</span></th>
           <th class="num">เปลี่ยนแปลง</th>
         </tr>
       </thead>

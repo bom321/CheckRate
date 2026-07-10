@@ -69,17 +69,17 @@
     document.querySelectorAll('[data-run-trigger]').forEach(b => b.disabled = disabled);
   }
 
-  async function startRun(only) {
+  async function _startJob(endpoint, only, startingText) {
     setButtonsDisabled(true);
-    setStatus('running', '⏳ กำลังเริ่ม...');
+    setStatus('running', startingText);
     if (outputEl) outputEl.style.display = 'none';
     try {
-      const res = await fetch('/api/run', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(only ? { only: only } : {}),
       });
-      // ผู้ใช้กดรันเอง (หรือมีงานรันอยู่แล้ว 409) → ถือว่าเซสชันนี้ "เห็น" งานรัน
+      // ผู้ใช้กดเอง (หรือมีงานรันอยู่แล้ว 409) → ถือว่าเซสชันนี้ "เห็น" งานรัน
       // เพื่อให้ตอนงานเสร็จมีการรีเฟรชตารางให้ 1 ครั้ง
       observedRunning = true;
       if (res.status === 409) {
@@ -94,7 +94,19 @@
     poll();
   }
 
-  window.CheckRateRun = { startRun, poll, setStatus, showOutput };
+  function startRun(only) {
+    return _startJob('/api/run', only, '⏳ กำลังเริ่ม...');
+  }
+
+  function startBackfill(only) {
+    return _startJob('/api/backfill', only, '⏳ กำลังเติมข้อมูลย้อนหลัง...');
+  }
+
+  function startDiscoverYear(only) {
+    return _startJob('/api/discover-year', only, '⏳ กำลังสแกนหาประวัติทั้งปี (ใช้เวลานาน)...');
+  }
+
+  window.CheckRateRun = { startRun, startBackfill, startDiscoverYear, poll, setStatus, showOutput };
 
   document.addEventListener('DOMContentLoaded', () => {
     const allBtn = document.getElementById('run-all');
@@ -104,6 +116,41 @@
     if (bankBtn) {
       bankBtn.setAttribute('data-run-trigger', '');
       bankBtn.addEventListener('click', () => startRun(bankBtn.dataset.code));
+    }
+
+    const BACKFILL_MSG = 'เติมข้อมูลย้อนหลังจาก PDF ที่เก็บไว้?\n' +
+      'ระบบจะสร้างไฟล์ CSV ใหม่จาก PDF ทั้งหมดที่เก็บไว้ (ค่าที่ติดตามใหม่จะถูกเติมย้อนหลัง)';
+
+    const backfillAllBtn = document.getElementById('backfill-all');
+    if (backfillAllBtn) {
+      backfillAllBtn.setAttribute('data-run-trigger', '');
+      backfillAllBtn.addEventListener('click', () => { if (confirm(BACKFILL_MSG)) startBackfill(null); });
+    }
+
+    const backfillBankBtn = document.getElementById('backfill-bank');
+    if (backfillBankBtn) {
+      backfillBankBtn.setAttribute('data-run-trigger', '');
+      backfillBankBtn.addEventListener('click', () => { if (confirm(BACKFILL_MSG)) startBackfill(backfillBankBtn.dataset.code); });
+    }
+
+    const DISCOVER_YEAR_MSG = 'สแกนหาประกาศทั้งปีนี้แบบละเอียด?\n' +
+      'ระบบจะไล่ตรวจทุกวันตั้งแต่ต้นปีถึงวันนี้ (ใช้เวลาหลายนาที) ดาวน์โหลดไฟล์ที่ยังไม่มีในเครื่อง ' +
+      'แล้วสร้าง CSV ใหม่ให้อัตโนมัติ — ใช้เมื่อสงสัยว่ามีประกาศบางช่วงที่การตรวจสอบปกติพลาดไป';
+
+    const discoverYearAllBtn = document.getElementById('discover-year-all');
+    if (discoverYearAllBtn) {
+      discoverYearAllBtn.setAttribute('data-run-trigger', '');
+      discoverYearAllBtn.addEventListener('click', () => {
+        if (confirm(DISCOVER_YEAR_MSG + '\n(ธนาคารที่ไม่รองรับจะถูกข้ามอัตโนมัติ)')) startDiscoverYear(null);
+      });
+    }
+
+    const discoverYearBtn = document.getElementById('discover-year-bank');
+    if (discoverYearBtn) {
+      discoverYearBtn.setAttribute('data-run-trigger', '');
+      discoverYearBtn.addEventListener('click', () => {
+        if (confirm(DISCOVER_YEAR_MSG)) startDiscoverYear(discoverYearBtn.dataset.code);
+      });
     }
     // เช็คสถานะครั้งแรก: ถ้ามีงานค้างรันอยู่ (จากรีเฟรช/แท็บอื่น) จะ poll ต่อ
     // แต่ถ้าเป็นผลของ run เก่าที่จบไปแล้ว จะแค่แสดงสถานะเฉย ๆ ไม่ยิง reload
