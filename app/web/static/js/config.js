@@ -133,8 +133,8 @@
         if (!t.key) return `[${b.code}] มี rate target ที่ยังไม่ได้ตั้ง key`;
         if (seen.has(t.key)) return `[${b.code}] key ซ้ำ: ${t.key}`;
         seen.add(t.key);
-        if (!t.row_keyword && !t.tenor_months) {
-          return `[${b.code}] '${t.key}': ต้องระบุ "Row (ผลิตภัณฑ์/ระยะเวลา)" หรือ "เดือน" อย่างน้อยหนึ่งอย่าง`;
+        if (!t.row_keyword && !t.tenor_months && !t.section_keyword) {
+          return `[${b.code}] '${t.key}': ต้องระบุ "Section" หรือ "Row (ผลิตภัณฑ์/ระยะเวลา)" หรือ "เดือน" อย่างน้อยหนึ่งอย่าง`;
         }
       }
     }

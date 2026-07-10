@@ -14,7 +14,7 @@ import importlib
 from ..common import log, get_effective_date as _default_effective_date
 
 # รายชื่อ module ของแต่ละธนาคาร (เพิ่มไฟล์ใหม่ที่นี่)
-_MODULES = ["scb", "kbank"]
+_MODULES = ["scb", "kbank", "ktb"]
 
 # parser_id -> module object
 _REGISTRY: dict = {}
