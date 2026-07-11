@@ -40,7 +40,7 @@
 
 ## ขั้นตอนที่ 3 — Copy โปรเจกต์ขึ้น NAS และตั้งค่า `.env`
 
-1. คัดลอกโฟลเดอร์โปรเจกต์นี้ทั้งหมด (`CheckRate/`) ขึ้น NAS เช่นไปที่ `/volume1/docker/checkrate/`
+1. คัดลอกโฟลเดอร์โปรเจกต์นี้ทั้งหมด (`CheckRate/`) ขึ้น NAS ไปที่ `/volume1/bom321/Work/deposit-rate/docker/checkrate/`
    (ผ่าน File Station, `scp`, หรือ Git — **ไม่ต้อง** copy โฟลเดอร์ `data/` ที่ใช้ dev บน Mac ขึ้นไปด้วยก็ได้
    เพราะข้อมูลจริงจะอยู่ที่ `HOST_DATA_DIR` ตามขั้นตอนที่ 2)
 2. สร้างไฟล์ `.env` จาก `.env.example`:
@@ -66,12 +66,12 @@
 
 ### วิธี A: ผ่าน Container Manager (GUI)
 1. เปิด **Container Manager** → แท็บ **Project** → **Create**
-2. เลือกโฟลเดอร์โปรเจกต์ (`/volume1/docker/checkrate/`) ที่มี `docker-compose.yml` อยู่
+2. เลือกโฟลเดอร์โปรเจกต์ (`/volume1/bom321/Work/deposit-rate/docker/checkrate/`) ที่มี `docker-compose.yml` อยู่
 3. กด **Build** แล้ว **Run** — DSM จะอ่าน `docker-compose.yml` และ `.env` ในโฟลเดอร์เดียวกันให้อัตโนมัติ
 
 ### วิธี B: ผ่าน SSH
 ```bash
-cd /volume1/docker/checkrate
+cd /volume1/bom321/Work/deposit-rate/docker/checkrate
 docker-compose up -d --build
 ```
 
