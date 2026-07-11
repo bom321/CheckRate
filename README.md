@@ -5,7 +5,8 @@
 กราฟแนวโน้ม จัดการค่า config และสั่งรันตรวจสอบด้วยตนเอง ออกแบบให้แพ็กเป็น Docker รันบน **Synology NAS** ได้
 
 รองรับ **หลายธนาคารพร้อมกัน (parallel)** และเพิ่มธนาคาร/รูปแบบ PDF ใหม่ได้ผ่านระบบ parser แบบ plugin
-ปัจจุบันมี parser พร้อมใช้งาน 2 ตัว: **SCB** (`scb_passbook`) และ **KBANK** (`kbank`)
+ปัจจุบันมี parser พร้อมใช้งาน 4 ตัว: **SCB** (`scb_passbook`), **KBANK** (`kbank`), **KTB** (`ktb`)
+และ **BBL** (`bbl`)
 
 ---
 
@@ -37,7 +38,9 @@ CheckRate/
 │   │       ├── __init__.py      # registry: parser id → module + dispatch hook ทางเลือก
 │   │       ├── _tablekit.py     # helper อ่านตาราง/ข้อความไทยที่ใช้ร่วมกัน
 │   │       ├── scb.py           # ตัวอ่านของ SCB (parser id: scb_passbook)
-│   │       └── kbank.py         # ตัวอ่านของ KBANK (parser id: kbank)
+│   │       ├── kbank.py         # ตัวอ่านของ KBANK (parser id: kbank)
+│   │       ├── ktb.py           # ตัวอ่านของ KTB (parser id: ktb)
+│   │       └── bbl.py           # ตัวอ่านของ BBL (parser id: bbl) — PDF เป็นภาพสแกน ต้อง OCR
 │   └── web/                     # เว็บ Dashboard (FastAPI)
 │       ├── main.py              # routes + API
 │       ├── data_access.py       # ชั้นอ่าน config/CSV/log/result
@@ -80,6 +83,11 @@ CheckRate/
 ## วิธีรันบนเครื่อง (local dev — macOS/Linux)
 
 ```bash
+# 0. ติดตั้ง tesseract + ภาษาไทย (จำเป็นสำหรับ BBL เท่านั้น — PDF ประกาศเป็นภาพสแกน ต้อง OCR)
+brew install tesseract tesseract-lang        # macOS
+# sudo apt-get install tesseract-ocr tesseract-ocr-tha   # Debian/Ubuntu
+# (Docker: ติดตั้งให้แล้วใน Dockerfile)
+
 # 1. เตรียม virtualenv + ติดตั้ง dependency
 python3 -m venv .venv
 source .venv/bin/activate
@@ -147,11 +155,21 @@ docker-compose up -d --build
 
 ไม่ต้องแก้ `rate_monitor.py` หรือ `common.py` — flow ส่วนกลางเป็น generic
 
+**ถ้า PDF เป็นภาพสแกน (ไม่มี text layer)** ดู `banks/bbl.py` เป็นตัวอย่าง — render หน้า 1 เป็นภาพแล้ว OCR
+ด้วย tesseract (tha+eng) จับคอลัมน์จากพิกัด x ของค่าที่อ่านได้ และตรวจความมั่นใจ (conf) ของ OCR ก่อนเชื่อค่า
+รองรับทั้งแถวเงินฝากประจำ (ชี้ด้วย `tenor_months`) และแถวชื่อผลิตภัณฑ์อื่น เช่น สะสมทรัพย์ (ชี้ด้วย
+`row_keyword`/`section_keyword`) และรองรับ **tier วงเงิน (`amount_m`) กับทุกแถวเสมอ** แม้ประกาศฉบับนั้น
+จะไม่ได้แบ่ง tier ก็ตาม — เผื่อธนาคารเปลี่ยนมาแบ่ง tier ในอนาคตโดยไม่ต้องแก้ parser
+
 ---
 
 ## Tech stack
 
-Python 3.13 · FastAPI · Uvicorn · Jinja2 · pdfplumber · curl_cffi · Chart.js · supercronic · Docker
+Python 3.13 · FastAPI · Uvicorn · Jinja2 · pdfplumber · curl_cffi · tesseract (OCR) · Chart.js ·
+supercronic · Docker
 
-> `curl_cffi` ใช้ impersonate TLS fingerprint ของ Chrome เพื่อดาวน์โหลด PDF ของ KBANK ที่มี bot-protection
-> อยู่หน้าไฟล์ (มี manylinux wheel พร้อมใช้ ไม่ต้องแก้ `Dockerfile`)
+> `curl_cffi` ใช้ impersonate TLS fingerprint ของ Chrome เพื่อดาวน์โหลด PDF ของธนาคารที่มี bot-protection
+> (KBANK, KTB, BBL) — มี manylinux wheel พร้อมใช้ ไม่ต้องแก้ `Dockerfile`
+>
+> `tesseract` (+ ภาษาไทย) ใช้เฉพาะ **BBL** ที่ประกาศเป็นภาพสแกนล้วน — ธนาคารอื่นอ่านข้อความจาก PDF
+> ได้ตรง ๆ ผ่าน pdfplumber ถ้าไม่ติดตั้ง tesseract ระบบยังทำงานปกติ แต่ BBL จะอ่านอัตราไม่ได้และแจ้ง error

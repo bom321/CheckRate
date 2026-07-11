@@ -5,9 +5,13 @@ FROM python:3.13-slim
 
 # curl: จำเป็นสำหรับ download_pdf() ใน app/monitor/common.py
 # tzdata: ตั้ง timezone Asia/Bangkok
+# tesseract-ocr + tesseract-ocr-tha: PDF ประกาศของ BBL เป็นภาพสแกน (ไม่มี text layer)
+#   banks/bbl.py จึงต้อง OCR ภาษาไทย — ถ้าไม่มี package นี้ BBL จะอ่านอัตราไม่ได้ (ธนาคารอื่นไม่กระทบ)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         tzdata \
+        tesseract-ocr \
+        tesseract-ocr-tha \
     && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Asia/Bangkok \
