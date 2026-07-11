@@ -3,7 +3,7 @@
 {% block content %}
 <p><a class="link" href="/">← กลับหน้าภาพรวม</a></p>
 <h1>{{ bank.name }} <span style="color:var(--brand)">({{ bank.code }})</span></h1>
-<p class="page-desc">แนวโน้มอัตราดอกเบี้ยย้อนหลัง · ตรวจล่าสุด {{ last_checked or '-' }}</p>
+<p class="page-desc">แนวโน้มอัตราดอกเบี้ยย้อนหลัง (12 ครั้งล่าสุด) · ตรวจล่าสุด {{ last_checked or '-' }}</p>
 
 <div class="toolbar">
   <button id="run-bank" class="btn primary" data-code="{{ bank.code }}">▶ รันตรวจสอบธนาคารนี้</button>
@@ -56,6 +56,34 @@
 </div>
 {% else %}
 <div class="bank-card"><div class="empty">ยังไม่มีข้อมูลประวัติสำหรับธนาคารนี้</div></div>
+{% endif %}
+
+<h2 style="font-size:16px;margin:28px 0 12px">📁 ไฟล์ประกาศย้อนหลังทั้งหมด <span style="color:var(--muted);font-weight:400">(สำหรับสอบทาน)</span></h2>
+{% if pdf_years %}
+{% for grp in pdf_years %}
+<div class="bank-card">
+  <div class="bank-head"><div class="bank-title">ปี {{ grp.year }} <span style="color:var(--muted);font-weight:400">({{ grp.files|length }} ไฟล์)</span></div></div>
+  <div style="overflow-x:auto">
+  <table class="rates">
+    <thead>
+      <tr><th>วันที่มีผล</th><th>ชื่อไฟล์</th><th class="num">ขนาด</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for f in grp.files %}
+      <tr>
+        <td>{{ f.date or '-' }}</td>
+        <td>{{ f.name }}</td>
+        <td class="num">{{ (f.size_kb ~ ' KB') if f.size_kb is not none else '-' }}</td>
+        <td class="num"><a class="link" href="/pdf/{{ bank.code }}/{{ f.name }}" target="_blank">ดาวน์โหลด</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="bank-card"><div class="empty">ยังไม่มีไฟล์ที่เก็บไว้</div></div>
 {% endif %}
 {% endblock %}
 

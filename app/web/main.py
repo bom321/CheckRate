@@ -145,13 +145,15 @@ def bank_detail(request: Request, code: str):
     history = da.read_history(code)
     targets = bank.get("rate_targets", [])
 
-    # ข้อมูลกราฟ: labels = วันที่, 1 dataset ต่อ 1 rate key
-    labels = [r.get("effective_date", "") for r in history]
+    # ข้อมูลกราฟ: labels = วันที่, 1 dataset ต่อ 1 rate key — แสดงย้อนหลังไม่เกิน 12 ครั้งล่าสุด
+    # (history เรียงเก่า→ใหม่อยู่แล้ว slice ท้ายสุด = 12 ครั้งล่าสุด; ธนาคารที่มีน้อยกว่าได้ครบตามเดิม)
+    chart_history = history[-12:]
+    labels = [r.get("effective_date", "") for r in chart_history]
     datasets = []
     for t in targets:
         key = t["key"]
         series = []
-        for r in history:
+        for r in chart_history:
             v = _fmt_rate(r.get(key))
             series.append(float(v) if v is not None else None)
         datasets.append({"key": key, "label": t.get("alias") or t.get("label") or key, "data": series})
@@ -175,6 +177,7 @@ def bank_detail(request: Request, code: str):
         "date_cols": date_cols, "target_rows": target_rows, "has_data": bool(history),
         "last_checked": da.last_checked(code),
         "supports_discover_year": da.supports_discover_year(bank),
+        "pdf_years": da.list_pdfs_by_year(code),
     })
 
 
