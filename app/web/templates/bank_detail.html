@@ -61,8 +61,11 @@
 <h2 style="font-size:16px;margin:28px 0 12px">📁 ไฟล์ประกาศย้อนหลังทั้งหมด <span style="color:var(--muted);font-weight:400">(สำหรับสอบทาน)</span></h2>
 {% if pdf_years %}
 {% for grp in pdf_years %}
-<div class="bank-card">
-  <div class="bank-head"><div class="bank-title">ปี {{ grp.year }} <span style="color:var(--muted);font-weight:400">({{ grp.files|length }} ไฟล์)</span></div></div>
+<details class="bank-card year-group"{% if loop.first %} open{% endif %}>
+  <summary class="bank-head">
+    <div class="bank-title">ปี {{ grp.year }} <span style="color:var(--muted);font-weight:400">({{ grp.files|length }} ไฟล์)</span></div>
+    <span class="year-chevron" aria-hidden="true">▾</span>
+  </summary>
   <div style="overflow-x:auto">
   <table class="rates">
     <thead>
@@ -80,7 +83,7 @@
     </tbody>
   </table>
   </div>
-</div>
+</details>
 {% endfor %}
 {% else %}
 <div class="bank-card"><div class="empty">ยังไม่มีไฟล์ที่เก็บไว้</div></div>

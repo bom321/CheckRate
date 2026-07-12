@@ -98,6 +98,16 @@ def _is_blocked(payload) -> bool:
     return needle in payload
 
 
+def _get_rates_page(session, code: str):
+    """GET หน้า rates — ถ้าโดน Incapsula challenge จะปลดบล็อก (common.solve_incapsula_challenge)
+    แล้วลองซ้ำอีกหนึ่งครั้ง คืน response ล่าสุด (ผู้เรียกยังต้องเช็ค _is_blocked เองเผื่อปลดไม่สำเร็จ)"""
+    r = session.get(RATES_PAGE_URL, timeout=45)
+    if _is_blocked(r.text) and common.solve_incapsula_challenge(session, r.text, SITE_BASE):
+        log.info(f"[{code}] หน้า rates โดน Incapsula challenge — ปลดบล็อกแล้ว กำลังลองซ้ำ")
+        r = session.get(RATES_PAGE_URL, timeout=45)
+    return r
+
+
 _HREF_RE = re.compile(r'href="(/Download/rateFee/RateFeeDownload_(\d+)([^"]*?\.pdf))"')
 
 
@@ -122,7 +132,7 @@ def resolve_latest_url(bank: dict) -> str | None:
     code = bank.get("code", "KTB")
     try:
         session = _new_session()
-        r = session.get(RATES_PAGE_URL, timeout=45)
+        r = _get_rates_page(session, code)
     except Exception as e:
         log.error(f"ktb.resolve_latest_url: โหลดหน้า rates ไม่สำเร็จ: {e}")
         return None
@@ -364,7 +374,7 @@ def discover_year(bank: dict, year: int | None = None) -> list[str]:
 
     session = _new_session()
     try:
-        r = session.get(RATES_PAGE_URL, timeout=45)
+        r = _get_rates_page(session, code)
     except Exception as e:
         log.error(f"[{code}] discover_year: โหลดหน้า rates ไม่สำเร็จ: {e}")
         return []

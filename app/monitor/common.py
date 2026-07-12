@@ -127,6 +127,9 @@ def _download_pdf_curl(url: str, referer: str) -> bytes | None:
         data = r.stdout
         if data and data[:4] == b"%PDF":
             return data
+        if b"_Incapsula_Resource" in data:
+            log.info("download_pdf: โดน Incapsula challenge — สลับไปโหมด impersonate (ปลดบล็อกอัตโนมัติ)")
+            return _download_pdf_impersonate(url, referer)
         log.error(f"download_pdf: ไม่ใช่ PDF (received {len(data)} bytes, starts: {data[:20]})")
         return None
     except Exception as e:
@@ -134,20 +137,47 @@ def _download_pdf_curl(url: str, referer: str) -> bytes | None:
         return None
 
 
+# Incapsula (Imperva) — หน้า challenge ที่บล็อกจะเป็น HTML สั้น ๆ (~200-500 ไบต์) ฝัง
+# <script src="/_Incapsula_Resource?SWJIYLWA=..."> ยืนยันกับ krungthai.com แล้วว่าแค่ GET
+# สคริปต์นั้นด้วย session เดิม (cookie visid_incap/incap_ses เดิม) เซิร์ฟเวอร์ก็ปลดบล็อก session
+# ให้เลย — ไม่ต้องรัน JS จริง จากนั้นยิง request เดิมซ้ำจะได้ของจริง
+_INCAPSULA_SCRIPT_RE = re.compile(r'src="(/_Incapsula_Resource[^"]+)"')
+
+
+def solve_incapsula_challenge(session, blocked_text: str, base_url: str) -> bool:
+    """พยายามปลดบล็อก Incapsula ให้ session ที่โดน challenge — คืน True ถ้าโหลดสคริปต์ปลดบล็อกสำเร็จ
+    (ผู้เรียกต้องยิง request เดิมซ้ำเองอีกครั้ง)"""
+    m = _INCAPSULA_SCRIPT_RE.search(blocked_text)
+    if not m:
+        return False
+    try:
+        r = session.get(base_url + m.group(1), timeout=30)
+        log.info(f"solve_incapsula_challenge: โหลดสคริปต์ปลดบล็อกแล้ว (HTTP {r.status_code})")
+        return r.status_code == 200
+    except Exception as e:
+        log.warning(f"solve_incapsula_challenge: โหลดสคริปต์ปลดบล็อกไม่สำเร็จ: {e}")
+        return False
+
+
 def _download_pdf_impersonate(url: str, referer: str) -> bytes | None:
     """ดาวน์โหลดผ่าน curl_cffi (เลียนลายนิ้วมือ TLS ของ Chrome) — ใช้กับเว็บที่มี
-    bot protection แบบ Akamai/Cloudflare ที่บล็อก curl ธรรมดา (เช่น KBANK)"""
+    bot protection แบบ Akamai/Cloudflare/Incapsula ที่บล็อก curl ธรรมดา (เช่น KBANK, KTB)
+    ถ้าเจอ challenge ของ Incapsula จะปลดบล็อกแล้วลองซ้ำอีกหนึ่งครั้ง"""
     try:
         from curl_cffi import requests as cffi_requests
     except ImportError:
         log.error("download_pdf (impersonate): ไม่ได้ติดตั้ง curl_cffi (pip install curl_cffi)")
         return None
+    headers = {"Referer": referer, "Accept": "application/pdf,*/*"}
     try:
-        r = cffi_requests.get(
-            url, impersonate="chrome", timeout=60,
-            headers={"Referer": referer, "Accept": "application/pdf,*/*"},
-        )
+        session = cffi_requests.Session(impersonate="chrome")
+        r = session.get(url, timeout=60, headers=headers)
         data = r.content
+        if not (data and data[:4] == b"%PDF"):
+            base_url = "/".join(url.split("/", 3)[:3])  # scheme://host
+            if solve_incapsula_challenge(session, r.text, base_url):
+                r = session.get(url, timeout=60, headers=headers)
+                data = r.content
         if data and data[:4] == b"%PDF":
             return data
         log.error(f"download_pdf (impersonate): ไม่ใช่ PDF (HTTP {r.status_code}, "

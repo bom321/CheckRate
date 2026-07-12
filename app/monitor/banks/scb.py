@@ -21,7 +21,7 @@ parser id: "scb_passbook"
   (ทางเลือก) get_effective_date(pdf_bytes) -> str | None  ถ้า format วันที่ต่างจากค่าเริ่มต้น
 """
 
-import io, json, os, random, re, subprocess, time
+import io, json, os, random, re, time
 from datetime import datetime
 
 import pdfplumber
@@ -219,8 +219,9 @@ def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:
 # request ไม่หน่วงเวลา ทำให้แม้แต่ URL ที่ใช้ตรวจสอบปกติทุกวันก็โดนบล็อกไปด้วยชั่วคราว — บล็อกเป็น
 # rate-based ไม่ถาวร แต่ระยะเวลาไม่แน่นอน ~1-20 นาที) จึงต้อง:
 #   1. หน่วงเวลา (+jitter) ระหว่างทุก request เสมอ (ห้ามลดโดยไม่ทดสอบผลกระทบก่อน)
-#   2. ตรวจจับสัญญาณบล็อก (หน้า challenge มี "_Incapsula_Resource") แล้ว**หยุดทันที** ไม่ใช่นับเป็น
-#      "ไม่พบไฟล์" ธรรมดา (ป้องกันยิงต่อตอนโดนบล็อกซึ่งจะยิ่งแย่ลง)
+#   2. ตรวจจับสัญญาณบล็อก (หน้า challenge มี "_Incapsula_Resource") → ลองปลดบล็อกด้วย
+#      common.solve_incapsula_challenge หนึ่งครั้งต่อรอบสแกน ถ้ายังโดนซ้ำ = rate-limit จริง **หยุดทันที**
+#      ไม่ใช่นับเป็น "ไม่พบไฟล์" ธรรมดา (ป้องกันยิงต่อตอนโดนบล็อกซึ่งจะยิ่งแย่ลง)
 #   3. จำความคืบหน้า (resume state) ข้าม sequence ที่ยืนยันมีไฟล์แล้ว ไม่ยิง request ซ้ำทุกครั้งที่กด
 REQUEST_DELAY_SEC = 6.0     # หน่วงเวลาฐานระหว่างแต่ละ request (บวก jitter เพิ่ม) ห้ามลดโดยไม่ทดสอบก่อน
 REQUEST_JITTER_SEC = 2.0    # สุ่มเพิ่มเวลาหน่วง 0-2 วิ กัน pattern สม่ำเสมอเกินไป
@@ -252,19 +253,22 @@ def _save_confirmed_seq(code: str, year: int, seq: int) -> None:
         log.warning(f"scb: บันทึก discover_state ไม่ได้: {e}")
 
 
-def _fetch_raw(url: str, referer: str) -> bytes:
-    """เหมือน common._download_pdf_curl แต่คืน raw bytes เสมอ (ไม่ทิ้งถ้าไม่ใช่ PDF) เพื่อให้
-    discover_year ตรวจจับสัญญาณบล็อกของ Incapsula ได้ (แยกจาก 'ไม่พบไฟล์' ธรรมดา)"""
-    UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+SITE_BASE = "https://www.scb.co.th"
+
+
+def _new_session():
+    from curl_cffi import requests as cffi_requests
+    return cffi_requests.Session(impersonate="chrome")
+
+
+def _fetch_raw(session, url: str, referer: str) -> bytes:
+    """คืน raw bytes เสมอ (ไม่ทิ้งถ้าไม่ใช่ PDF) เพื่อให้ discover_year ตรวจจับสัญญาณบล็อกของ
+    Incapsula ได้ (แยกจาก 'ไม่พบไฟล์' ธรรมดา) — ใช้ curl_cffi session ร่วมกันทั้งรอบสแกน
+    เพื่อให้การปลดบล็อก (solve_incapsula_challenge) มีผลต่อ request ถัด ๆ ไปด้วย"""
     try:
-        r = subprocess.run(
-            ["curl", "-s", "-L", "--max-time", "60",
-             "-A", UA, "-H", f"Referer: {referer}", "-H", "Accept: application/pdf,*/*",
-             url],
-            capture_output=True, timeout=70,
-        )
-        return r.stdout
+        r = session.get(url, timeout=60,
+                        headers={"Referer": referer, "Accept": "application/pdf,*/*"})
+        return r.content
     except Exception as e:
         log.error(f"scb._fetch_raw exception: {e}")
         return b""
@@ -298,19 +302,35 @@ def discover_year(bank: dict, year: int | None = None) -> list[str]:
     saved: list[str] = []
     misses = 0
     blocked = False
+    session = _new_session()
+    tried_unblock = False  # ปลดบล็อก Incapsula ได้หนึ่งครั้งต่อรอบสแกน — โดนซ้ำหลังปลดแล้ว = rate-limit จริง
     log.info(f"scb.discover_year: สแกนปี {yr} (พ.ศ. {yr + 543}) เลขลำดับ {start_seq}-{MAX_SEQ_PER_YEAR} "
              f"(ข้าม 1-{confirmed_seq} ที่ยืนยันแล้ว) หน่วง ~{REQUEST_DELAY_SEC}-"
              f"{REQUEST_DELAY_SEC + REQUEST_JITTER_SEC:.0f}s/request — ใช้เวลานาน")
 
     for seq in range(start_seq, MAX_SEQ_PER_YEAR + 1):
-        url = (f"https://www.scb.co.th/content/media/personal-banking/rates-fees/deposits/"
+        url = (f"{SITE_BASE}/content/media/personal-banking/rates-fees/deposits/"
                f"{yr}/deposit{be_suffix:02d}-{seq:02d}.pdf")
-        raw = _fetch_raw(url, referer)
+        raw = _fetch_raw(session, url, referer)
         time.sleep(REQUEST_DELAY_SEC + random.uniform(0, REQUEST_JITTER_SEC))
 
+        if _is_blocked(raw) and not tried_unblock:
+            tried_unblock = True
+            # ทางที่ 1: โหลดสคริปต์ปลดบล็อกใน session เดิม (ได้ผลกับ Incapsula แบบ KTB)
+            if common.solve_incapsula_challenge(session, raw.decode("utf-8", "replace"), SITE_BASE):
+                time.sleep(REQUEST_DELAY_SEC + random.uniform(0, REQUEST_JITTER_SEC))
+                raw = _fetch_raw(session, url, referer)
+            # ทางที่ 2: challenge ของ SCB ผูกกับ session (ทดสอบแล้ว: ปลดใน session เดิมไม่หลุด
+            # แต่ session ใหม่ผ่านทันที) — เปิด session ใหม่ cookie ใหม่ แล้วลองอีกครั้งเดียว
+            if _is_blocked(raw):
+                log.info("scb.discover_year: ปลดบล็อกใน session เดิมไม่สำเร็จ — เปิด session ใหม่ลองซ้ำ")
+                session = _new_session()
+                time.sleep(REQUEST_DELAY_SEC + random.uniform(0, REQUEST_JITTER_SEC))
+                raw = _fetch_raw(session, url, referer)
+
         if _is_blocked(raw):
-            log.warning(f"scb.discover_year: โดน rate-limit บล็อกที่เลขลำดับ {seq:02d} — หยุดสแกนทันที "
-                        f"(รอสักครู่ค่อยกดใหม่ ความคืบหน้าที่ทำได้แล้วถูกบันทึกไว้)")
+            log.warning(f"scb.discover_year: โดน rate-limit บล็อกที่เลขลำดับ {seq:02d} (ปลดบล็อกไม่สำเร็จ) "
+                        f"— หยุดสแกนทันที (รอสักครู่ค่อยกดใหม่ ความคืบหน้าที่ทำได้แล้วถูกบันทึกไว้)")
             blocked = True
             break
 

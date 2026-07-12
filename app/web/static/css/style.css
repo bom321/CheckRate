@@ -63,6 +63,14 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 .bank-meta { font-size: 12.5px; color: var(--muted); text-align: right; }
 .bank-meta b { color: var(--ink); }
 
+/* กลุ่มไฟล์รายปี — พับ/กางได้ */
+details.year-group > summary { cursor: pointer; list-style: none; user-select: none; }
+details.year-group > summary::-webkit-details-marker { display: none; }
+details.year-group > summary:hover { background: var(--bg); }
+details.year-group:not([open]) > summary { border-bottom: none; }
+details.year-group .year-chevron { color: var(--muted); font-size: 13px; transition: transform .15s; }
+details.year-group:not([open]) .year-chevron { transform: rotate(-90deg); }
+
 table.rates { width: 100%; border-collapse: collapse; }
 table.rates th, table.rates td { padding: 10px 18px; text-align: left; }
 table.rates thead th {
