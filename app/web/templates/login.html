@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}เข้าสู่ระบบ — CheckRate{% endblock %}
+{% block content %}
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    {% if step == 'email' %}
+      <h1>เข้าสู่ระบบผู้ดูแล</h1>
+      <p class="hint">กรอกอีเมลที่ได้รับสิทธิ์ดูแลระบบ — ระบบจะส่งรหัสยืนยัน 6 หลักไปให้ทางอีเมล</p>
+      {% if error %}<div class="notice err">{{ error }}</div>{% endif %}
+      <form method="post" action="/login">
+        <label for="email">อีเมล</label>
+        <input type="text" id="email" name="email" inputmode="email" autocomplete="email" required autofocus>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn primary">ส่งรหัสยืนยัน</button>
+      </form>
+    {% else %}
+      <h1>กรอกรหัสยืนยัน</h1>
+      <p class="hint">ส่งไปยัง {{ email }} — รหัสหมดอายุใน 5 นาที</p>
+      {% if notice %}<div class="notice ok">{{ notice }}</div>{% endif %}
+      {% if error %}<div class="notice err">{{ error }}</div>{% endif %}
+      <form method="post" action="/login/verify">
+        <label for="code">รหัสยืนยัน 6 หลัก</label>
+        <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>
+        <input type="hidden" name="email" value="{{ email }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn primary">เข้าสู่ระบบ</button>
+      </form>
+      <form method="post" action="/login" style="margin-top:10px">
+        <input type="hidden" name="email" value="{{ email }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn">ขอรหัสใหม่</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

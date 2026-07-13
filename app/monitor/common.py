@@ -389,14 +389,14 @@ def get_recipients() -> list[str]:
     return []
 
 
-def send_email(subject: str, html_body: str) -> bool:
-    """ส่งอีเมล HTML ผ่าน SMTP (SSL 465 หรือ STARTTLS 587). คงลายเซ็นเดิม (subject, html) -> bool"""
+def send_email(subject: str, html_body: str, to: list[str] | None = None) -> bool:
+    """ส่งอีเมล HTML ผ่าน SMTP (SSL 465 หรือ STARTTLS 587). ไม่ส่ง `to` = ผู้รับตาม get_recipients() เดิม"""
     host = os.environ.get("SMTP_HOST")
     port = int(os.environ.get("SMTP_PORT", "465") or "465")
     user = os.environ.get("SMTP_USER")
     password = os.environ.get("SMTP_PASSWORD")
     sender = os.environ.get("EMAIL_FROM") or user
-    recipients = get_recipients()
+    recipients = to or get_recipients()
 
     if not host or not user or not password:
         log.error("send_email failed: SMTP config ไม่ครบ (ต้องมี SMTP_HOST/SMTP_USER/SMTP_PASSWORD)")

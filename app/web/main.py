@@ -2,24 +2,28 @@
 """
 main.py — FastAPI backend สำหรับเว็บ Dashboard ติดตามอัตราดอกเบี้ยเงินฝาก
 
-หน้า:
+หน้า (สาธารณะ — ไม่ต้อง login):
   /?month=YYYY-MM  Overview — สรุปรายเดือน: ประกาศกี่ครั้ง · อัตราไหนเปลี่ยน · รายการที่ประกาศซ้ำในเดือนเดียว
   /bank/{code}     รายละเอียด — กราฟแนวโน้ม (Chart.js) + ตารางประวัติ + ลิงก์ PDF
+
+หน้า/API (เฉพาะผู้ดูแลที่ login แล้ว — ดู auth.py, ยืนยันตัวตนด้วย OTP ทางอีเมล):
   /config          จัดการ rate_targets / enabled / ลิงก์ดาวน์โหลด + ผู้รับอีเมล
   /logs            ดู log + ปุ่มรันตรวจสอบ + ทดสอบส่งอีเมล
-API: /api/config, /api/settings, /api/logs, /api/run, /api/run/status, /api/test-email
+  /api/config, /api/settings, /api/logs, /api/run, /api/run/status, /api/test-email
 """
 
 import os, sys, re, subprocess, threading, time
 from datetime import datetime
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from . import data_access as da
 from . import thaidate
+from . import auth
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
@@ -32,9 +36,14 @@ MONITOR_MODULE = "app.monitor.rate_monitor"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))  # .../CheckRate
 
 app = FastAPI(title="CheckRate — Deposit Rate Dashboard")
+app.add_middleware(SessionMiddleware, secret_key=auth.session_secret(),
+                    max_age=30 * 24 * 3600, same_site="lax")
+app.add_exception_handler(auth.LoginRequired, auth.login_required_handler)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
+templates = Jinja2Templates(directory=TEMPLATES_DIR, context_processors=[auth.auth_context])
 templates.env.filters.update(thaidate.FILTERS)   # thai_date / thai_month / thai_datetime ...
+auth.configure(templates)
+app.include_router(auth.router)
 
 
 # ─────────────────────────── Job manager (run monitor) ───────────────────────────
@@ -262,14 +271,14 @@ def serve_pdf(code: str, filename: str):
 
 
 # ─────────────────────────── Config page + API ───────────────────────────
-@app.get("/config", response_class=HTMLResponse)
+@app.get("/config", response_class=HTMLResponse, dependencies=[Depends(auth.require_admin_page)])
 def config_page(request: Request):
     return templates.TemplateResponse(request, "config.html", {
         "active": "config",
     })
 
 
-@app.get("/api/config")
+@app.get("/api/config", dependencies=[Depends(auth.require_admin_api)])
 def api_get_config():
     banks = da.load_banks()
     # โลโก้แยกออกมาต่างหาก ไม่ยัดใส่ dict ของ bank — ไม่งั้นตอนบันทึกจะถูกเขียนกลับลง banks_config.json
@@ -299,7 +308,7 @@ def _validate_banks(banks) -> str | None:
     return None
 
 
-@app.post("/api/config")
+@app.post("/api/config", dependencies=[Depends(auth.require_admin_api)])
 async def api_save_config(request: Request):
     payload = await request.json()
     banks = payload.get("banks")
@@ -314,12 +323,12 @@ async def api_save_config(request: Request):
 
 
 # ─────────────────────────── Settings (email recipients) ───────────────────────────
-@app.get("/api/settings")
+@app.get("/api/settings", dependencies=[Depends(auth.require_admin_api)])
 def api_get_settings():
     return {"settings": da.load_settings(), "recipients": da.get_recipients()}
 
 
-@app.post("/api/settings")
+@app.post("/api/settings", dependencies=[Depends(auth.require_admin_api)])
 async def api_save_settings(request: Request):
     payload = await request.json()
     settings = da.load_settings()
@@ -333,7 +342,7 @@ async def api_save_settings(request: Request):
 
 
 # ─────────────────────────── Logs page + API ───────────────────────────
-@app.get("/logs", response_class=HTMLResponse)
+@app.get("/logs", response_class=HTMLResponse, dependencies=[Depends(auth.require_admin_page)])
 def logs_page(request: Request):
     return templates.TemplateResponse(request, "logs.html", {
         "active": "logs",
@@ -341,13 +350,13 @@ def logs_page(request: Request):
     })
 
 
-@app.get("/api/logs")
+@app.get("/api/logs", dependencies=[Depends(auth.require_admin_api)])
 def api_logs(level: str | None = None, bank: str | None = None, lines: int = 500):
     return {"lines": da.tail_log(level=level, bank=bank, lines=min(max(lines, 1), 5000))}
 
 
 # ─────────────────────────── Run trigger + status ───────────────────────────
-@app.post("/api/run")
+@app.post("/api/run", dependencies=[Depends(auth.require_admin_api)])
 async def api_run(request: Request):
     only = None
     try:
@@ -365,7 +374,7 @@ async def api_run(request: Request):
     return {"ok": True, "started": True}
 
 
-@app.post("/api/backfill")
+@app.post("/api/backfill", dependencies=[Depends(auth.require_admin_api)])
 async def api_backfill(request: Request):
     """สร้าง CSV ใหม่จาก PDF ที่เก็บไว้ — ใช้เติมค่าของ rate_target ที่เพิ่งเพิ่มย้อนหลัง"""
     only = None
@@ -384,7 +393,7 @@ async def api_backfill(request: Request):
     return {"ok": True, "started": True}
 
 
-@app.post("/api/discover-year")
+@app.post("/api/discover-year", dependencies=[Depends(auth.require_admin_api)])
 async def api_discover_year(request: Request):
     """สแกนหาประกาศทั้งปีแบบละเอียด (เฉพาะธนาคารที่รองรับ เช่น KBANK) — ใช้นานกว่าปกติ กดด้วยมือเป็นครั้งคราว"""
     only = None
@@ -403,13 +412,13 @@ async def api_discover_year(request: Request):
     return {"ok": True, "started": True}
 
 
-@app.get("/api/run/status")
+@app.get("/api/run/status", dependencies=[Depends(auth.require_admin_api)])
 def api_run_status():
     with _job_lock:
         return dict(_job)
 
 
-@app.post("/api/test-email")
+@app.post("/api/test-email", dependencies=[Depends(auth.require_admin_api)])
 def api_test_email():
     env = dict(os.environ)
     env["DATA_DIR"] = da.DATA_DIR

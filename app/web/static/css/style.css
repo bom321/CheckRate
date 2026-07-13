@@ -722,3 +722,28 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
     font-size: 12px;
   }
 }
+
+/* ── หน้าเข้าสู่ระบบผู้ดูแล (/login) ── */
+.auth-wrap { max-width: 380px; margin: 60px auto; }
+.auth-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 28px 26px; box-shadow: var(--shadow);
+}
+.auth-card h1 { font-size: 18px; margin: 0 0 6px; }
+.auth-card p.hint { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+.auth-card label { display: block; font-size: 12.5px; font-weight: 500; color: #5C5F65; margin-bottom: 6px; }
+.auth-card input { margin-bottom: 14px; }
+.auth-card .btn.primary { width: 100%; padding: 10px 16px; }
+.nav form { display: inline; }
+.nav button.navlink {
+  font-family: inherit; cursor: pointer; background: none; border: none;
+  color: #9DA0A6; font-weight: 500; font-size: 13.5px;
+  padding: 8px 14px; border-radius: 9px; margin-left: 2px;
+}
+.nav button.navlink:hover { background: rgba(255,255,255,.07); color: #E8E7E3; }
+.botnav form { display: contents; }
+.botnav button.navlink {
+  font-family: inherit; cursor: pointer; background: none; border: none; border-radius: 10px;
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  color: #9DA0A6; font-size: 10.5px; font-weight: 500; padding: 8px 4px;
+}

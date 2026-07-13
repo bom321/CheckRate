@@ -2,6 +2,7 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 jinja2>=3.1
 python-multipart>=0.0.9
+itsdangerous>=2         # signed cookie สำหรับ SessionMiddleware (ระบบ login admin)
 pdfplumber>=0.11
 pypdfium2>=4          # render PDF เป็นภาพให้ OCR (banks/bbl.py) — pdfplumber ดึงมาเป็น dependency อยู่แล้ว
                       #   แต่ pin ไว้ตรง ๆ เพราะ bbl พึ่งพาโดยตรง

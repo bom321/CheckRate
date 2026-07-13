@@ -29,12 +29,14 @@
     {% else %}
       <h1>ยังไม่มีธนาคารใดประกาศดอกเบี้ยในเดือนนี้</h1>
     {% endif %}
+    {% if is_admin %}
     <div class="ov-hero-actions">
       <button id="run-all" class="btn primary"><span class="btn-dot"></span>รันตรวจสอบทันที</button>
       <span id="run-status" class="status-pill idle">พร้อมทำงาน</span>
     </div>
     {# ไม่มี #run-output ในหน้านี้ตั้งใจ — run.js จะข้ามการโชว์ log ให้เอง เหลือแค่สรุปผลใน #run-notice #}
     <div id="run-notice"></div>
+    {% endif %}
   </div>
 
   <div class="ov-kpis">
@@ -202,6 +204,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/run.js"></script>
+{% if is_admin %}<script src="/static/js/run.js"></script>{% endif %}
 <script src="/static/js/overview.js"></script>
 {% endblock %}

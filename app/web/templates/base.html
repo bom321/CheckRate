@@ -16,8 +16,13 @@
     </a>
     <nav class="nav">
       <a href="/" class="{{ 'active' if active=='overview' else '' }}">ภาพรวม</a>
+      {% if is_admin %}
       <a href="/config" class="{{ 'active' if active=='config' else '' }}">จัดการอัตรา</a>
       <a href="/logs" class="{{ 'active' if active=='logs' else '' }}">Log &amp; รัน</a>
+      <form method="post" action="/logout"><button type="submit" class="navlink">ออกจากระบบ</button></form>
+      {% else %}
+      <a href="/login?next={{ request.url.path }}">เข้าสู่ระบบ</a>
+      {% endif %}
     </nav>
   </header>
   <main class="container">
@@ -32,12 +37,21 @@
     <a href="/" class="{{ 'active' if active=='overview' else '' }}">
       <span class="botnav-ic" aria-hidden="true">▤</span>ภาพรวม
     </a>
+    {% if is_admin %}
     <a href="/config" class="{{ 'active' if active=='config' else '' }}">
       <span class="botnav-ic" aria-hidden="true">⚙</span>จัดการอัตรา
     </a>
     <a href="/logs" class="{{ 'active' if active=='logs' else '' }}">
       <span class="botnav-ic" aria-hidden="true">▶</span>Log
     </a>
+    <form method="post" action="/logout">
+      <button type="submit" class="navlink"><span class="botnav-ic" aria-hidden="true">⎋</span>ออกจากระบบ</button>
+    </form>
+    {% else %}
+    <a href="/login?next={{ request.url.path }}">
+      <span class="botnav-ic" aria-hidden="true">⎋</span>เข้าสู่ระบบ
+    </a>
+    {% endif %}
   </nav>
   <script>
     // นาฬิกา footer

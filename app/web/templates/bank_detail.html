@@ -6,7 +6,8 @@
   <a href="/?month={{ month }}">ภาพรวม</a><span>›</span><span>รายละเอียดธนาคาร</span><span>›</span><span class="now">{{ bank.name|replace('ธนาคาร', '') }}</span>
 </div>
 
-<!-- แอ็กชันของธนาคารนี้ (id เดิม — run.js ผูกไว้อยู่) -->
+{% if is_admin %}
+<!-- แอ็กชันของธนาคารนี้ (id เดิม — run.js ผูกไว้อยู่) เฉพาะผู้ดูแลที่ login แล้วเท่านั้น -->
 <div class="toolbar">
   <button id="run-bank" class="btn primary" data-code="{{ bank.code }}">▶ รันตรวจสอบธนาคารนี้</button>
   <button id="backfill-bank" class="btn btn-icon" data-code="{{ bank.code }}" title="สร้างข้อมูลย้อนหลังจาก PDF ที่เก็บไว้ — ใช้เมื่อเพิ่มอัตราที่ติดตามใหม่">↻ <span class="btn-txt">เติมข้อมูลย้อนหลัง</span></button>
@@ -17,6 +18,7 @@
 </div>
 {# ไม่มี #run-output ในหน้านี้ตั้งใจ — run.js จะข้ามการโชว์ log ให้เอง เหลือแค่สรุปผลใน #run-notice #}
 <div id="run-notice"></div>
+{% endif %}
 
 <!-- ประโยคสรุปเดือนนี้ — โชว์เฉพาะมือถือ (desktop มี KPI การ์ดอยู่แล้ว) -->
 <div class="bd-hero">
@@ -202,7 +204,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/run.js"></script>
+{% if is_admin %}<script src="/static/js/run.js"></script>{% endif %}
 <script id="chart-data" type="application/json">
 {"labels": {{ chart_labels|tojson }}, "datasets": {{ chart_datasets|tojson }}}
 </script>
