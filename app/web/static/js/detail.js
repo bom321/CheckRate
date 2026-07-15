@@ -135,6 +135,13 @@
     sw.className = 'sw';
     sw.style.background = colorOf(i);
     item.append(sw, document.createTextNode(s.label));
+    // ประเภทลูกค้า (บุคคลธรรมดา/กองทุน/ราชการ) — ชื่อ series อย่างเดียวแยกไม่ออกว่าเป็นอัตราของใคร
+    if (s.dep && s.dep.label) {
+      const dep = document.createElement('span');
+      dep.className = 'pill-dep dep-' + s.dep.slug;
+      dep.textContent = s.dep.label;
+      item.append(dep);
+    }
     legend.insertBefore(item, unit);
   });
 

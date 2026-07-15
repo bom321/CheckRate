@@ -14,6 +14,17 @@
   {% if supports_discover_year %}
   <button id="discover-year-bank" class="btn btn-icon" data-code="{{ bank.code }}" title="สแกนหาประกาศทั้งปีแบบละเอียด (ใช้เวลานาน) เผื่อมีไฟล์ที่การตรวจสอบปกติพลาดไป — กดเป็นครั้งคราวพอ">🔍 <span class="btn-txt">ค้นหาประวัติทั้งปีอย่างละเอียด</span></button>
   {% endif %}
+  {# ค่าเริ่มต้นเป็น "ทั้งหมด" ตั้งใจ: backfill จะได้ใช้ cache (ไม่บังคับอ่านซ้ำ) ส่วน discover-year
+     ที่ไม่ได้ส่งปีไป ฝั่ง monitor จะ default เป็นปีปัจจุบันให้เองอยู่แล้ว — แสดงเสมอไม่ผูกกับ
+     supports_discover_year เพราะปุ่มเติมข้อมูลย้อนหลังใช้ปีนี้ด้วยและมีทุกธนาคาร #}
+  <label class="f-sel lg-year" title="ปีที่ใช้กับปุ่ม 'เติมข้อมูลย้อนหลัง' (บังคับอ่าน PDF ของปีนั้นใหม่ ข้าม cache) และ 'ค้นหาประวัติทั้งปี' (ปีที่จะไปดาวน์โหลด)">ปี
+    <select id="year-select" data-run-trigger>
+      <option value="">ทั้งหมด (ใช้ cache)</option>
+      {% for y in year_options %}
+        <option value="{{ y }}">{{ y + 543 }}</option>
+      {% endfor %}
+    </select>
+  </label>
   <span id="run-status" class="status-pill idle">พร้อมทำงาน</span>
 </div>
 {# ไม่มี #run-output ในหน้านี้ตั้งใจ — run.js จะข้ามการโชว์ log ให้เอง เหลือแค่สรุปผลใน #run-notice #}
@@ -87,21 +98,35 @@
   </div>
 </div>
 
+{% if item.unreadable %}
+<!-- แถบเตือน: บาง target ของประกาศล่าสุดในเดือนนี้อ่านค่าจาก PDF ไม่ได้ (ถูกปล่อยว่างไว้ ไม่ได้เดา)
+     ค่าใน "ปัจจุบัน" ของตารางด้านล่างอาจเป็นค่าที่ยกมาจากประกาศก่อนหน้าเงียบ ๆ — ต้องเตือนให้เห็นชัด #}
+<div class="notice err">
+  ⚠ อ่านค่าไม่ได้จากประกาศล่าสุดของเดือนนี้ ({{ item.unreadable|length }} รายการ): {{ item.unreadable|join(', ') }}
+  {% if is_admin %} — <a href="/bank/{{ bank.code }}/manual" class="link">กรอกค่าเอง</a>{% endif %}
+</div>
+{% endif %}
+
 <!-- อัตราทุกระยะในเดือนที่เลือก -->
 <div class="ov-panel" style="margin-top:14px">
   <div class="ov-panel-head">
     <div class="ov-panel-title">อัตราดอกเบี้ยเงินฝากทุกระยะ</div>
     <div class="ov-months">
+      {% set shown = month_options[:2]|map(attribute='value')|list %}
       {% for m in month_options[:2] %}
-        <a class="{{ 'on' if m == month }}" href="/bank/{{ bank.code }}?month={{ m }}">{{ m|thai_month_short }}</a>
+        <a class="{{ 'on' if m.value == month }}" href="/bank/{{ bank.code }}?month={{ m.value }}">
+          {{ m.value|thai_month_short }} <span class="m-count">{{ m.count }}</span>
+        </a>
       {% endfor %}
-      {% if month not in month_options[:2] %}
+      {% if month not in shown %}
         <a class="on" href="/bank/{{ bank.code }}?month={{ month }}">{{ month|thai_month_short }}</a>
       {% endif %}
       <select id="month-select" data-code="{{ bank.code }}" aria-label="เลือกเดือน">
         <option value="">เลือกเดือน ▾</option>
         {% for m in month_options %}
-          <option value="{{ m }}" {{ 'selected' if m == month }}>{{ m|thai_month }}</option>
+          <option value="{{ m.value }}" {{ 'selected' if m.value == month }}>
+            {{ m.value|thai_month }} · {{ (m.count ~ ' ประกาศ') if m.count else 'ไม่มีประกาศ' }}
+          </option>
         {% endfor %}
       </select>
     </div>
@@ -109,8 +134,8 @@
 
   <div class="ov-grid ov-cols">
     <div>ผลิตภัณฑ์ / ระยะ</div>
-    <div style="text-align:right">ครั้งก่อน</div>
-    <div style="text-align:right">ปัจจุบัน</div>
+    <div style="text-align:right">ครั้งก่อน<span class="col-date">{{ item.prev_date|thai_date if item.prev_date else '—' }}</span></div>
+    <div style="text-align:right">ปัจจุบัน<span class="col-date">{{ item.cur_date|thai_date if item.cur_date else '—' }}</span></div>
     <div style="text-align:center">ประกาศ</div>
     <div style="text-align:right">เปลี่ยนสุทธิ</div>
   </div>
@@ -124,10 +149,11 @@
           {{ p.label }}
           {% if p.times > 1 %}<span class="ov-tag">ประกาศซ้ำ</span>{% endif %}
         </div>
-        {% if p.depositor %}<div class="ov-prod-sub">{{ p.depositor }}</div>{% endif %}
+        <div class="ov-prod-sub"><span class="pill-dep dep-{{ p.dep.slug }}">{{ p.dep.label }}</span></div>
         <div class="ov-prod-sub-mob">
-          {% if p.times %}{{ p.depositor }} · {{ p.times }} ครั้ง · {{ '%+.2f%%'|format(p.net) if p.net is not none else '—' }}
-          {% else %}{{ (p.current ~ '%') if p.current else '—' }} · ไม่เปลี่ยนแปลง{% endif %}
+          <span class="pill-dep dep-{{ p.dep.slug }}">{{ p.dep.label }}</span>
+          {% if p.times %}<span class="sub-mob-txt">· {{ p.times }} ครั้ง</span>
+          {% else %}<span class="sub-mob-txt">· {{ (p.current ~ '%') if p.current else '—' }} · ไม่เปลี่ยนแปลง</span>{% endif %}
         </div>
       </div>
       <div class="ov-num prev">{{ (p.previous ~ '%') if p.previous else '—' }}</div>
@@ -192,7 +218,7 @@
         <div class="name">{{ f.name }}</div>
         <div class="size">{{ (f.size_kb ~ ' KB') if f.size_kb is not none else '-' }}</div>
       </div>
-      <div style="text-align:right"><a href="/pdf/{{ bank.code }}/{{ f.name }}" target="_blank" title="ดาวน์โหลด">⬇</a></div>
+      <div style="text-align:right"><a href="/pdf/{{ bank.code }}/{{ f.name }}" target="_blank" rel="noopener" title="เปิดดูประกาศในแท็บใหม่">↗</a></div>
     </div>
     {% endfor %}
   </details>

@@ -350,6 +350,11 @@ def discover_year(bank: dict, year: int | None = None) -> list[str]:
         if eff_date is None:
             log.warning(f"scb.discover_year: seq={seq:02d} ดาวน์โหลดได้แต่หาวันที่ในเนื้อหาไม่เจอ — ข้าม")
             continue
+        # URL อยู่ใต้โฟลเดอร์ปี yr บนเว็บ แต่ "วันที่มีผล" ในเนื้อหาอาจเป็นคนละปี (ประกาศออกปลายปีก่อน
+        # แต่มีผลปีถัดไป ฯลฯ) — ต้องกรองซ้ำด้วยวันที่จริง ไม่ใช่เชื่อแค่ตำแหน่ง URL
+        if not common.is_date_in_year(eff_date, yr):
+            log.info(f"scb.discover_year: seq={seq:02d} วันที่มีผล {eff_date} ไม่ใช่ปี {yr} — ข้าม (ไม่นับเป็นไฟล์ใหม่)")
+            continue
         if eff_date in existing_dates:
             continue
 

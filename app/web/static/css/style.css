@@ -90,6 +90,7 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn.small { padding: 6px 11px; font-size: 13px; }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+.toolbar .f-sel { flex: none; }
 
 a.link { color: var(--brand); text-decoration: none; font-weight: 600; }
 a.link:hover { text-decoration: underline; }
@@ -276,6 +277,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;
 }
 .lg-actions .status-pill { margin-left: auto; }
+/* ตัวเลือกปี — ใช้ร่วมกับปุ่ม backfill / discover-year ที่อยู่ข้าง ๆ */
+.lg-year { flex: none; }
 
 .status-pill {
   display: inline-flex; align-items: center; gap: 7px;
@@ -339,6 +342,12 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 .ov-hero {
   display: flex; align-items: flex-end; justify-content: space-between;
   gap: 28px; flex-wrap: wrap; margin-bottom: 28px;
+}
+/* เดือนที่กำลังดูอยู่ — เป็นบริบทของทั้งหน้า ต้องอ่านออกก่อนตัวเลขอื่น จึงแยกออกจาก .ov-hero-meta */
+.ov-hero-month {
+  display: inline-block; margin-bottom: 10px; padding: 4px 12px; border-radius: 20px;
+  background: var(--ink); color: #fff;
+  font-size: 15px; font-weight: 600; letter-spacing: .01em;
 }
 .ov-hero-meta { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
 .ov-hero h1 {
@@ -428,6 +437,13 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
   border-radius: 8px; border: 1px solid var(--line-strong); color: #5C5F65;
   background: var(--card);
 }
+/* จำนวนประกาศในเดือนนั้น — 0 ประกาศยังต้องเลือกได้ แค่ทำให้จางลง */
+.ov-months .m-count {
+  display: inline-block; min-width: 15px; margin-left: 3px; padding: 0 4px;
+  border-radius: 20px; background: #ECEAE4; color: #5C5F65;
+  font-size: 10px; font-weight: 600; text-align: center;
+}
+.ov-months a.on .m-count { background: rgba(255, 255, 255, .22); color: #fff; }
 
 .ov-grid {
   display: grid; grid-template-columns: 2.6fr 1fr 1fr .8fr 1fr; gap: 14px; align-items: center;
@@ -438,6 +454,11 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 }
 .ov-cols .r { text-align: right; }
 .ov-cols .c { text-align: center; }
+/* วันที่ของประกาศที่คอลัมน์ "ครั้งก่อน"/"ปัจจุบัน" อ้างถึง — บรรทัดที่สองใต้ชื่อคอลัมน์ */
+.ov-cols .col-date {
+  display: block; margin-top: 1px;
+  font-size: 10px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums;
+}
 .ov-group {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   padding: 11px 22px; background: #FBFAF8;
@@ -467,6 +488,18 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
   font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 20px;
   background: var(--warn-soft); color: var(--warn);
 }
+
+/* ประเภทลูกค้า (depositor) — เดิมเป็นข้อความเทาจาง แยกไม่ออกว่าอัตราไหนของใคร
+   slug มาจาก _depositor_pill() ใน main.py (normalize ชื่อที่สะกดต่างกันข้ามธนาคาร) */
+.pill-dep {
+  display: inline-block; font-size: 10px; font-weight: 600; line-height: 1.5;
+  padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+  background: #ECEAE4; color: #5C5F65;               /* dep-other = สีกลาง */
+}
+.pill-dep.dep-person { background: #EAF0F7; color: #2B6CB0; }
+.pill-dep.dep-fund   { background: #F3EEF9; color: #7C5CA8; }
+.pill-dep.dep-gov    { background: var(--warn-soft); color: var(--warn); }
+.pill-dep.dep-corp   { background: #E7F3F1; color: #00796B; }
 .ov-num { text-align: right; font-variant-numeric: tabular-nums; }
 .ov-num.prev { font-size: 14px; color: var(--muted-soft); }
 .ov-num.cur { font-size: 14px; font-weight: 600; }
@@ -495,13 +528,6 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 .ov-tl-row .delta.down { color: var(--down); }
 
 .ov-quiet { padding: 13px 22px 13px 34px; font-size: 12.5px; color: var(--muted-soft); }
-
-/* ธนาคารที่ปิดใช้งาน / ยังไม่มีข้อมูล */
-.ov-others {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin-top: 18px; font-size: 12.5px; color: var(--muted);
-}
-.ov-others .ov-pill { background: #E6E3DC; }
 
 
 /* ══════════════ Bank detail (mockup 5a) ══════════════ */
@@ -623,6 +649,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 
   /* Log (6c): ปุ่มเรียงเต็มแถว · ตัวกรองเลื่อนแนวนอน · log เป็นการ์ดต่อบรรทัด */
   .lg-actions .btn { flex: 1 1 100%; }
+  .lg-actions .lg-year { flex: 1 1 100%; }
   .lg-actions .status-pill { margin-left: 0; }
   .filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
   .filters > * { flex: none; }
@@ -680,6 +707,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
   .toolbar .btn.btn-icon { width: 38px; height: 38px; padding: 0; flex: none; }
   .toolbar .btn.btn-icon .btn-txt { display: none; }
   .toolbar .btn.primary { flex: 1; }
+  .toolbar .f-sel { flex: 1 1 100%; }   /* ตัวเลือกปี — เต็มบรรทัดของตัวเองแทนที่จะบีบเป็นเส้นเล็ก ๆ */
   .toolbar .status-pill { margin-left: 0; width: fit-content; }
 
   /* ผลิตภัณฑ์เป็นการ์ดพับ/กาง — scope ใต้ .bd-rows เท่านั้น ไม่แตะ .ov-row ของหน้าภาพรวม (ยังเป็น div ธรรมดา) */
@@ -691,7 +719,10 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
   .bd-rows .ov-grid { grid-template-columns: 1fr auto; gap: 10px; padding: 13px 14px; }
   .bd-rows .ov-prod { grid-column: 1; }
   .bd-rows .ov-prod-sub { display: none; }
-  .bd-rows .ov-prod-sub-mob { display: block; font: 400 10.5px var(--sans); color: var(--muted-soft); margin-top: 2px; }
+  .bd-rows .ov-prod-sub-mob {
+    display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 4px;
+  }
+  .bd-rows .ov-prod-sub-mob .sub-mob-txt { font: 400 10.5px var(--sans); color: var(--muted-soft); }
   .bd-rows .ov-num, .bd-rows .ov-times, .bd-rows .ov-net { display: none; }
   .bd-rows .ov-chev { display: inline-block; font-size: 14px; color: var(--muted-soft); transition: transform .15s; }
   .bd-rows .ov-row[open] .ov-chev { transform: rotate(180deg); }
@@ -746,4 +777,37 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
   font-family: inherit; cursor: pointer; background: none; border: none; border-radius: 10px;
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
   color: #9DA0A6; font-size: 10.5px; font-weight: 500; padding: 8px 4px;
+}
+
+/* ══════════════ หน้ากรอกค่าเอง (/bank/{code}/manual) ══════════════ */
+/* wrapper คุมการ scroll แนวนอน — คอลัมน์เยอะตาม rate_targets ของแต่ละธนาคาร ห้ามให้ body เลื่อนแนวนอน */
+.manual-table-wrap {
+  overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+}
+.manual-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.manual-table th, .manual-table td {
+  padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: left;
+}
+.manual-table th {
+  background: #F1EEE8; font-size: 11px; font-weight: 600; color: #4E5157;
+  position: sticky; top: 0; z-index: 1;
+}
+.manual-table th.sticky, .manual-table td.sticky {
+  position: sticky; left: 0; background: var(--card); z-index: 2;
+  font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.manual-table th.sticky { z-index: 3; background: #F1EEE8; }
+.manual-table td.manual-pdf { text-align: center; }
+.manual-table td.manual-pdf a { color: var(--brand); text-decoration: none; font-weight: 600; }
+.manual-table input {
+  width: 84px; padding: 6px 8px; font-size: 12.5px; font-variant-numeric: tabular-nums;
+  border-radius: 6px; border: 1px solid var(--line-strong);
+}
+/* ช่องว่าง = OCR อ่านไม่ได้ — ต้องเด่นกว่าปกติมาก เพราะเป็นเหตุผลหลักที่มาหน้านี้ */
+.manual-table td.cell-empty input { border-color: var(--down); background: var(--down-soft); }
+.manual-table td.cell-empty input::placeholder { color: var(--down); font-size: 10px; }
+/* ช่องที่กรอกเองอยู่แล้ว — สีต่างจาก cell-empty ชัดเจน กันสับสนว่า "ยังอ่านไม่ได้" กับ "แก้แล้ว" */
+.manual-table td.cell-manual { background: var(--brand-soft); }
+.manual-table .manual-badge {
+  display: block; font-size: 9.5px; font-weight: 600; color: var(--brand-ink); margin-top: 2px;
 }

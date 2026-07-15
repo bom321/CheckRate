@@ -167,6 +167,19 @@ def last_checked(code: str) -> str | None:
     return csv_mtime(code)
 
 
+# ─────────────────────────── Manual override (admin กรอกค่าเอง) ───────────────────────────
+MANUAL_RATE_MIN = common.MANUAL_RATE_MIN
+MANUAL_RATE_MAX = common.MANUAL_RATE_MAX
+
+
+def load_manual(code: str) -> dict:
+    return common.load_manual(code)
+
+
+def save_manual(code: str, data: dict) -> None:
+    common.save_manual(code, data)
+
+
 # ─────────────────────────── Settings ───────────────────────────
 def load_settings() -> dict:
     return common.load_settings()

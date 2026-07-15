@@ -105,15 +105,26 @@
     document.querySelectorAll('[data-run-trigger]').forEach(b => b.disabled = disabled);
   }
 
-  async function _startJob(endpoint, only, startingText) {
+  // #year-select อยู่ทั้งหน้า Logs และหน้า bank detail (id เดียวกัน จึงใช้โค้ดชุดเดียวได้)
+  // หน้าไหนไม่มี select นี้ → null = ให้ฝั่ง server ตัดสินใจเอง (discover-year default ปีปัจจุบัน)
+  function selectedYear() {
+    const sel = document.getElementById('year-select');
+    const v = sel && sel.value ? parseInt(sel.value, 10) : NaN;
+    return Number.isFinite(v) ? v : null;
+  }
+
+  async function _startJob(endpoint, only, startingText, year) {
     setButtonsDisabled(true);
     setStatus('running', startingText);
     if (outputEl) outputEl.style.display = 'none';
+    const payload = {};
+    if (only) payload.only = only;
+    if (year) payload.year = year;
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(only ? { only: only } : {}),
+        body: JSON.stringify(payload),
       });
       // ผู้ใช้กดเอง (หรือมีงานรันอยู่แล้ว 409) → ถือว่าเซสชันนี้ "เห็น" งานรัน
       // เพื่อให้ตอนงานเสร็จมีการรีเฟรชตารางให้ 1 ครั้ง
@@ -134,12 +145,12 @@
     return _startJob('/api/run', only, '⏳ กำลังเริ่ม...');
   }
 
-  function startBackfill(only) {
-    return _startJob('/api/backfill', only, '⏳ กำลังเติมข้อมูลย้อนหลัง...');
+  function startBackfill(only, year) {
+    return _startJob('/api/backfill', only, '⏳ กำลังเติมข้อมูลย้อนหลัง...', year);
   }
 
-  function startDiscoverYear(only) {
-    return _startJob('/api/discover-year', only, '⏳ กำลังสแกนหาประวัติทั้งปี (ใช้เวลานาน)...');
+  function startDiscoverYear(only, year) {
+    return _startJob('/api/discover-year', only, '⏳ กำลังสแกนหาประวัติทั้งปี (ใช้เวลานาน)...', year);
   }
 
   window.CheckRateRun = { startRun, startBackfill, startDiscoverYear, poll, setStatus, showOutput };
@@ -154,30 +165,47 @@
       bankBtn.addEventListener('click', () => startRun(bankBtn.dataset.code));
     }
 
-    const BACKFILL_MSG = 'เติมข้อมูลย้อนหลังจาก PDF ที่เก็บไว้?\n' +
-      'ระบบจะสร้างไฟล์ CSV ใหม่จาก PDF ทั้งหมดที่เก็บไว้ (ค่าที่ติดตามใหม่จะถูกเติมย้อนหลัง)';
+    const thaiYear = (y) => (y ? y + 543 : null);
+
+    function backfillMsg(year) {
+      return 'เติมข้อมูลย้อนหลังจาก PDF ที่เก็บไว้?\n' +
+        'ระบบจะสร้างไฟล์ CSV ใหม่จาก PDF ทั้งหมดที่เก็บไว้ (ค่าที่ติดตามใหม่จะถูกเติมย้อนหลัง)\n' +
+        (year
+          ? `บังคับอ่าน PDF ของปี ${thaiYear(year)} ใหม่ทั้งหมด (ข้าม cache) — ปีอื่นใช้ผลที่อ่านไว้แล้ว`
+          : 'ไฟล์ที่เคยอ่านไว้แล้วจะใช้ผลจาก cache (เร็ว) — เลือกปีถ้าต้องการบังคับอ่านใหม่');
+    }
+
+    function discoverYearMsg(year) {
+      const y = year ? `ปี ${thaiYear(year)}` : 'ปีนี้';
+      return `สแกนหาประกาศทั้ง${y}แบบละเอียด?\n` +
+        `ระบบจะไล่ตรวจทุกวันของ${y} (ใช้เวลาหลายนาที) ดาวน์โหลดไฟล์ที่ยังไม่มีในเครื่อง ` +
+        'แล้วสร้าง CSV ใหม่ให้อัตโนมัติ — ใช้เมื่อสงสัยว่ามีประกาศบางช่วงที่การตรวจสอบปกติพลาดไป';
+    }
 
     const backfillAllBtn = document.getElementById('backfill-all');
     if (backfillAllBtn) {
       backfillAllBtn.setAttribute('data-run-trigger', '');
-      backfillAllBtn.addEventListener('click', () => { if (confirm(BACKFILL_MSG)) startBackfill(null); });
+      backfillAllBtn.addEventListener('click', () => {
+        const y = selectedYear();
+        if (confirm(backfillMsg(y))) startBackfill(null, y);
+      });
     }
 
     const backfillBankBtn = document.getElementById('backfill-bank');
     if (backfillBankBtn) {
       backfillBankBtn.setAttribute('data-run-trigger', '');
-      backfillBankBtn.addEventListener('click', () => { if (confirm(BACKFILL_MSG)) startBackfill(backfillBankBtn.dataset.code); });
+      backfillBankBtn.addEventListener('click', () => {
+        const y = selectedYear();
+        if (confirm(backfillMsg(y))) startBackfill(backfillBankBtn.dataset.code, y);
+      });
     }
-
-    const DISCOVER_YEAR_MSG = 'สแกนหาประกาศทั้งปีนี้แบบละเอียด?\n' +
-      'ระบบจะไล่ตรวจทุกวันตั้งแต่ต้นปีถึงวันนี้ (ใช้เวลาหลายนาที) ดาวน์โหลดไฟล์ที่ยังไม่มีในเครื่อง ' +
-      'แล้วสร้าง CSV ใหม่ให้อัตโนมัติ — ใช้เมื่อสงสัยว่ามีประกาศบางช่วงที่การตรวจสอบปกติพลาดไป';
 
     const discoverYearAllBtn = document.getElementById('discover-year-all');
     if (discoverYearAllBtn) {
       discoverYearAllBtn.setAttribute('data-run-trigger', '');
       discoverYearAllBtn.addEventListener('click', () => {
-        if (confirm(DISCOVER_YEAR_MSG + '\n(ธนาคารที่ไม่รองรับจะถูกข้ามอัตโนมัติ)')) startDiscoverYear(null);
+        const y = selectedYear();
+        if (confirm(discoverYearMsg(y) + '\n(ธนาคารที่ไม่รองรับจะถูกข้ามอัตโนมัติ)')) startDiscoverYear(null, y);
       });
     }
 
@@ -185,7 +213,8 @@
     if (discoverYearBtn) {
       discoverYearBtn.setAttribute('data-run-trigger', '');
       discoverYearBtn.addEventListener('click', () => {
-        if (confirm(DISCOVER_YEAR_MSG)) startDiscoverYear(discoverYearBtn.dataset.code);
+        const y = selectedYear();
+        if (confirm(discoverYearMsg(y))) startDiscoverYear(discoverYearBtn.dataset.code, y);
       });
     }
     // เช็คสถานะครั้งแรก: ถ้ามีงานค้างรันอยู่ (จากรีเฟรช/แท็บอื่น) จะ poll ต่อ

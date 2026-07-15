@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}กรอกค่าเอง — {{ bank.code }} — CheckRate{% endblock %}
+{% block content %}
+
+<div class="bd-crumb">
+  <a href="/bank/{{ bank.code }}">{{ bank.name|replace('ธนาคาร', '') }}</a><span>›</span><span class="now">กรอกค่าเอง</span>
+</div>
+
+<div class="pg-head">
+  <div>
+    <h1>กรอกค่าอัตราดอกเบี้ยเอง — {{ bank.name|replace('ธนาคาร', '') }}</h1>
+    <p class="page-desc">ใช้แก้ช่องที่ระบบอ่านค่าจาก PDF ไม่ได้ (ไฮไลต์แดง) หรือช่องที่อ่านผิด — เว้นว่างเพื่อลบค่าที่กรอกเองแล้วกลับไปใช้ผลจากเครื่องอ่านตามเดิม
+      เปิด PDF เทียบข้าง ๆ ได้จากลิงก์คอลัมน์ขวาสุด</p>
+  </div>
+  <div class="pg-head-actions">
+    <button id="save-manual" class="btn primary" data-code="{{ bank.code }}">บันทึกและ rebuild ข้อมูล</button>
+  </div>
+</div>
+
+<div id="msg"></div>
+
+<div class="manual-table-wrap">
+  <table class="manual-table" id="manual-table">
+    <thead>
+      <tr>
+        <th class="sticky">วันที่ประกาศ</th>
+        {% for t in targets %}
+          <th>{{ t.get('alias') or t.get('label') or t['key'] }}</th>
+        {% endfor %}
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="sticky">{{ row.date|thai_date_full }}</td>
+        {% for t in targets %}
+          {% set c = row.cells[t.key] %}
+          <td class="{{ 'cell-empty' if c.empty else '' }}{{ ' cell-manual' if c.manual else '' }}">
+            <input type="number" step="0.01" min="{{ rate_min }}" max="{{ rate_max }}"
+                   data-date="{{ row.date }}" data-key="{{ t.key }}"
+                   data-orig="{{ c.value }}" value="{{ c.value }}"
+                   placeholder="{{ 'ว่าง — อ่านไม่ได้' if c.empty else '' }}">
+            {% if c.manual %}<span class="manual-badge" title="ช่องนี้กรอกเองอยู่">✎ กรอกเอง</span>{% endif %}
+          </td>
+        {% endfor %}
+        <td class="manual-pdf"><a href="/pdf/{{ bank.code }}/{{ row.pdf_name }}" target="_blank" rel="noopener" title="เปิดดูประกาศในแท็บใหม่">↗</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ targets|length + 2 }}" class="ov-quiet">ยังไม่มีประวัติของธนาคารนี้</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/manual.js"></script>
+{% endblock %}

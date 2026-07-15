@@ -14,10 +14,10 @@
 <!-- ── hero: สรุปทั้งเดือนในประโยคเดียว + KPI ── -->
 <div class="ov-hero">
   <div>
-    <div class="ov-hero-meta">
-      {{ month|thai_month }}
-      {% if kpi.last_checked %} · ตรวจสอบล่าสุด {{ kpi.last_checked|thai_datetime }}{% endif %}
-    </div>
+    <div class="ov-hero-month">{{ month|thai_month }}</div>
+    {% if kpi.last_checked %}
+    <div class="ov-hero-meta">ตรวจสอบล่าสุด {{ kpi.last_checked|thai_datetime }}</div>
+    {% endif %}
     {% if kpi.announcements %}
       <h1>ธนาคารประกาศดอกเบี้ย <b>{{ kpi.announcements }} ครั้ง</b>
         {% if kpi.changed_items %}
@@ -152,7 +152,7 @@
           {{ p.label }}
           {% if p.times > 1 %}<span class="ov-tag">ประกาศซ้ำ</span>{% endif %}
         </div>
-        {% if p.depositor %}<div class="ov-prod-sub">{{ p.depositor }}</div>{% endif %}
+        <div class="ov-prod-sub"><span class="pill-dep dep-{{ p.dep.slug }}">{{ p.dep.label }}</span></div>
       </div>
       <div class="ov-num prev">{{ (p.previous ~ '%') if p.previous else '—' }}</div>
       <div class="ov-num cur">{{ (p.current ~ '%') if p.current else '—' }}</div>
@@ -191,15 +191,6 @@
   {% endfor %}
   {% endfor %}
 </div>
-
-{% if other_banks %}
-<div class="ov-others">
-  <span>ไม่ได้แสดง:</span>
-  {% for item in other_banks %}
-    <span class="ov-pill">{{ item.bank.name }}{% if not item.bank.enabled %} · ปิดใช้งาน{% endif %}{% if not item.has_data %} · ยังไม่มีข้อมูล{% endif %}</span>
-  {% endfor %}
-</div>
-{% endif %}
 
 {% endblock %}
 

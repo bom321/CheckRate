@@ -40,6 +40,7 @@ import os
 import random
 import re
 import subprocess
+import threading
 import time
 from datetime import datetime
 from urllib.parse import quote
@@ -63,6 +64,20 @@ OCR_TIMEOUT_SEC = 180
 MIN_WORD_CONF = 60.0         # ค่าที่อ่านได้จริงมี conf 76-95; ต่ำกว่า 60 = ไม่น่าเชื่อถือ ทิ้ง
 MIN_CLUSTER_MEMBERS = 5      # คอลัมน์จริงมีค่าหลายสิบตัว — cluster เล็กกว่านี้คือ noise จาก OCR
 MAX_PLAUSIBLE_RATE = 10.0
+
+# ไฟล์สแกนคุณภาพต่ำ (พบจริง: ขนาด 300-400KB เทียบกับ 1.1-1.6MB ของไฟล์ปกติ) ทำให้ tesseract อ่าน "ป้ายชื่อ"
+# แถว/หมวดเพี้ยนได้ (ตัวเลขอัตรามักอ่านถูก แค่ป้ายที่ผิด) — ไม่มี config เดียวที่ชนะทุกไฟล์ที่พังจึงลองไล่ทีละ
+# variant แล้วเติมเฉพาะ target ที่ variant ก่อนหน้ายังอ่านไม่ได้ (ดู extract_rates)
+#
+# **ห้ามสลับลำดับ/แก้ variant[0] โดยไม่ทดสอบ CSV diff ใหม่** — variant[0] ต้องตรงกับพฤติกรรมเดิมเป๊ะ
+# (ไฟล์ปกติ 13/19 ไฟล์ที่ทดสอบ ต้องได้ค่าเดิม 100% เพราะ remaining ว่างตั้งแต่ variant[0] จึงไม่มีการลอง
+# variant อื่นเลย) ลำดับ variant ถัดจากนั้นมาจากการวัดผลจริงกับไฟล์ที่พัง (ก.ค. 2568) — ดู CLAUDE.md
+OCR_VARIANTS: list[tuple[str, int, int]] = [
+    ("tha+eng", 6, 300),   # ค่าเดิม/ค่าเริ่มต้น
+    ("tha", 6, 300),       # กู้ป้ายที่ OCR ปนอักษรละตินมั่ว (เช่น "สะสมทรัพย์" → "avauwiwed")
+    ("tha+eng", 4, 300),   # psm 4 (single column) ช่วยไฟล์ที่ตารางเพี้ยนทั้งหน้า
+    ("tha+eng", 6, 400),   # DPI สูงขึ้น ช่วยไฟล์สแกนเบลอ/ตัวอักษรเล็ก
+]
 
 DEFAULT_DEPOSITOR = "บุคคลธรรมดา"
 EXPECTED_COLUMNS = 9
@@ -107,14 +122,14 @@ def _value_of(token: str) -> float | None:
     return float(f"{m.group(1)}.{m.group(2)}") if m else None
 
 
-def _render_page1_png(pdf_bytes: bytes, top_frac: float | None = None) -> bytes | None:
+def _render_page1_png(pdf_bytes: bytes, top_frac: float | None = None, dpi: int = OCR_DPI) -> bytes | None:
     """render หน้า 1 เป็น PNG (top_frac = ครอปเฉพาะสัดส่วนบนของหน้า เช่น 0.25 สำหรับหัวกระดาษ)"""
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             page = pdf.pages[0]
             if top_frac:
                 page = page.crop((0, 0, page.width, page.height * top_frac))
-            img = page.to_image(resolution=OCR_DPI).original
+            img = page.to_image(resolution=dpi).original
     except Exception as e:
         log.error(f"bbl: render PDF เป็นภาพไม่สำเร็จ: {e}")
         return None
@@ -123,13 +138,18 @@ def _render_page1_png(pdf_bytes: bytes, top_frac: float | None = None) -> bytes 
     return buf.getvalue()
 
 
-def _ocr_words(png_bytes: bytes) -> list[dict] | None:
-    """OCR ภาพด้วย tesseract → รายการคำพร้อมพิกัด/ความมั่นใจ (TSV mode)"""
+def _ocr_words(png_bytes: bytes, lang: str = "tha+eng", psm: int = 6, dpi: int = OCR_DPI) -> list[dict] | None:
+    """OCR ภาพด้วย tesseract → รายการคำพร้อมพิกัด/ความมั่นใจ (TSV mode)
+    lang/psm/dpi รับพารามิเตอร์ได้ — extract_rates ไล่ลอง OCR_VARIANTS หลายชุดกับไฟล์ที่อ่านป้ายไม่ออก"""
+    # tesseract แตก thread เองด้วย OpenMP — เมื่อ backfill รันหลายธนาคารขนานกัน thread จะแย่ง CPU
+    # กันจนแต่ละตัวช้าลง (บนเครื่องเล็กอาจถึงขั้นชน OCR_TIMEOUT_SEC) บังคับให้ 1 thread ต่อ process
+    # แล้วปล่อยให้ ThreadPool ข้างนอกเป็นตัวจัดการความขนานแทน
+    env = dict(os.environ, OMP_THREAD_LIMIT="1")
     try:
         proc = subprocess.run(
-            ["tesseract", "stdin", "stdout", "--dpi", str(OCR_DPI),
-             "-l", "tha+eng", "--psm", "6", "tsv"],
-            input=png_bytes, capture_output=True, timeout=OCR_TIMEOUT_SEC,
+            ["tesseract", "stdin", "stdout", "--dpi", str(dpi),
+             "-l", lang, "--psm", str(psm), "tsv"],
+            input=png_bytes, capture_output=True, timeout=OCR_TIMEOUT_SEC, env=env,
         )
     except FileNotFoundError:
         log.error("bbl: ไม่พบคำสั่ง tesseract — PDF ของ BBL เป็นภาพสแกน ต้องใช้ OCR "
@@ -181,23 +201,30 @@ def _group_lines(words: list[dict]) -> list[dict]:
 
 
 # OCR หน้าเดียวกันถูกเรียกซ้ำใน run_bank (effective_date แล้วตามด้วย extract_rates) — cache ไว้กันทำซ้ำ
-_LINES_CACHE: dict[str, list[dict]] = {}
+# key รวม variant ด้วย เพราะไฟล์เดียวกันให้ lines ต่างกันตาม (lang, psm, dpi) ที่ใช้อ่าน
+# มี lock เพราะ backfill/main รันหลายธนาคารขนานกันด้วย ThreadPool (clear() + set ไม่ atomic)
+_LINES_CACHE: dict[tuple[str, tuple], list[dict]] = {}
+_LINES_CACHE_LOCK = threading.Lock()
 
 
-def _page1_lines(pdf_bytes: bytes) -> list[dict] | None:
-    key = hashlib.sha256(pdf_bytes).hexdigest()
-    if key in _LINES_CACHE:
-        return _LINES_CACHE[key]
-    png = _render_page1_png(pdf_bytes)
+def _page1_lines(pdf_bytes: bytes, variant: tuple[str, int, int] = OCR_VARIANTS[0]) -> list[dict] | None:
+    sha = hashlib.sha256(pdf_bytes).hexdigest()
+    cache_key = (sha, variant)
+    with _LINES_CACHE_LOCK:
+        if cache_key in _LINES_CACHE:
+            return _LINES_CACHE[cache_key]
+    lang, psm, dpi = variant
+    png = _render_page1_png(pdf_bytes, dpi=dpi)
     if png is None:
         return None
-    words = _ocr_words(png)
+    words = _ocr_words(png, lang=lang, psm=psm, dpi=dpi)
     if not words:
-        log.error("bbl: OCR ไม่ได้ข้อความจากหน้า 1 เลย")
+        log.error(f"bbl: OCR ไม่ได้ข้อความจากหน้า 1 เลย (variant {lang}/psm{psm}/{dpi}dpi)")
         return None
     lines = _group_lines(words)
-    _LINES_CACHE.clear()          # เก็บแค่ไฟล์ล่าสุดพอ (backfill วนหลายไฟล์ ไม่ต้องกินแรม)
-    _LINES_CACHE[key] = lines
+    with _LINES_CACHE_LOCK:
+        _LINES_CACHE.clear()      # เก็บแค่ (ไฟล์, variant) ล่าสุดพอ (backfill วนหลายไฟล์ ไม่ต้องกินแรม)
+        _LINES_CACHE[cache_key] = lines
     return lines
 
 
@@ -341,8 +368,14 @@ def _tenor_unit(line: dict, tenor: int) -> str | None:
 
 
 def _find_tenor_row(lines: list[dict], start: int, end: int, tenor: int) -> tuple[int | None, bool]:
-    """หาแถว "ระยะเวลาการฝาก N เดือน" ในหมวด — คืน (index บรรทัด, ใช้การเทียบหน่วยแบบผ่อนปรนหรือไม่)"""
-    cands = [i for i in range(start + 1, end) if _SK_ROW in thai_skeleton(lines[i]["text"])]
+    """หาแถว "ระยะเวลาการฝาก N เดือน" ในหมวด — คืน (index บรรทัด, ใช้การเทียบหน่วยแบบผ่อนปรนหรือไม่)
+
+    label (ส่วนก่อนค่าตัวแรก หลังตัดเลขข้อ) ต้อง**ขึ้นต้นด้วย** "ระยะเวลาการฝาก" ทันที ไม่ใช่แค่มีคำนี้
+    อยู่ในบรรทัด — กันแถวของผลิตภัณฑ์อื่นที่ OCR รวมหัวข้อ+แถวข้อมูลเป็นบรรทัดเดียว (พบจริงกับไฟล์สแกน
+    คุณภาพต่ำ: "10. ประจำบัวหลวงซุปเปอร์โบนัส (2) ระยะเวลาการฝาก 6 เดือน ..." มีคำว่า "ระยะเวลาการฝาก"
+    อยู่ในบรรทัดเหมือนกัน แต่เป็นคนละผลิตภัณฑ์ ไม่ใช่แถวของหมวด "ประจำ" จริง — ถ้าใช้ตรวจแบบ 'มีคำนี้อยู่ใน
+    บรรทัด' เฉย ๆ จะจับผิดแถวได้เมื่อแถวที่ถูกต้องมีคำว่า 'เดือน' OCR เพี้ยน เช่น 'เตือน' จนไม่ผ่านการเทียบหน่วย)"""
+    cands = [i for i in range(start + 1, end) if _label_sk(lines[i]).startswith(_SK_ROW)]
 
     for i in cands:                       # รอบแรก: หน่วยอ่านออกชัดว่าเป็น "เดือน"
         sk = _tenor_unit(lines[i], tenor)
@@ -423,25 +456,23 @@ def _locate_row(lines: list[dict], target: dict, key: str) -> tuple[int | None, 
     return None, 0, ""
 
 
-def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:
-    """อ่านอัตราตาม rate_targets — รองรับทั้งแถวเงินฝากประจำ (tenor_months) และแถวชื่อผลิตภัณฑ์
-    (row_keyword เช่น สะสมทรัพย์) และรองรับ tier วงเงิน (amount_m) กับทุกแถวเสมอ ไม่ว่าประกาศฉบับนั้น
-    จะแบ่ง tier หรือไม่ก็ตาม (ดูหมายเหตุที่ _TIER_RULES)"""
-    lines = _page1_lines(pdf_bytes)
-    if lines is None:
-        return None
+def _extract_targets(lines: list[dict], targets: list[dict],
+                     keys: set[str] | None = None) -> tuple[dict, dict, list[str]]:
+    """อ่านค่าของ targets ที่ระบุจาก lines ของ OCR variant หนึ่ง (keys=None คือทุกตัว)
+    คืน (result, tiers_used, failed_keys) — คอลัมน์จับไม่ได้ตามที่คาด = ทุก target ที่ขอ 'ล้มเหลว' หมด"""
+    wanted = [t for t in targets if keys is None or t["key"] in keys]
 
     cols = _column_centers(lines)
     if len(cols) != EXPECTED_COLUMNS:
         log.error(f"bbl.extract_rates: จับคอลัมน์ได้ {len(cols)} คอลัมน์ (คาดว่า {EXPECTED_COLUMNS}) "
                   f"— OCR/รูปแบบตารางผิดไปจากเดิม ไม่อ่านต่อกันได้ค่าผิดคอลัมน์")
-        return None
+        return {}, {}, [t["key"] for t in wanted]
 
     result: dict = {}
     tiers_used: dict = {}
     failed: list[str] = []
 
-    for target in bank["rate_targets"]:
+    for target in wanted:
         key = target["key"]
 
         depositor_value = target.get("depositor", DEFAULT_DEPOSITOR)
@@ -486,12 +517,46 @@ def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:
         tiers_used[key] = desc
         log.info(f"  {target.get('label', key)}: {rate:.2f}%  ← {desc} [OCR conf {conf:.0f}%]")
 
+    return result, tiers_used, failed
+
+
+def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:
+    """อ่านอัตราตาม rate_targets — รองรับทั้งแถวเงินฝากประจำ (tenor_months) และแถวชื่อผลิตภัณฑ์
+    (row_keyword เช่น สะสมทรัพย์) และรองรับ tier วงเงิน (amount_m) กับทุกแถวเสมอ ไม่ว่าประกาศฉบับนั้น
+    จะแบ่ง tier หรือไม่ก็ตาม (ดูหมายเหตุที่ _TIER_RULES)
+
+    ไล่ลอง OCR_VARIANTS ทีละชุด — variant แรกอ่านทุก target, ชุดถัดไป**เติมเฉพาะ target ที่ยังขาด**
+    (ไม่เขียนทับค่าที่อ่านได้แล้ว) ไฟล์ปกติจะอ่านครบตั้งแต่ variant แรกและไม่แตะ variant อื่นเลย
+    — เสียเวลา OCR เพิ่มเฉพาะไฟล์สแกนคุณภาพต่ำที่ variant แรกอ่านป้ายไม่ออกเท่านั้น
+    ค่าที่ยังขาดหลังลองครบทุก variant จะถูกปล่อยว่างไว้ (ไม่เดา) — ดู rate_monitor.py ส่วนแจ้งเตือน"""
+    targets = bank["rate_targets"]
+    result: dict = {}
+    tiers_used: dict = {}
+    remaining = {t["key"] for t in targets}
+
+    for i, variant in enumerate(OCR_VARIANTS):
+        if not remaining:
+            break
+        lines = _page1_lines(pdf_bytes, variant)
+        if lines is None:
+            continue
+        r, tu, _ = _extract_targets(lines, targets, keys=remaining)
+        gained = set(r) & remaining
+        if gained:
+            lang, psm, dpi = variant
+            tag = "" if i == 0 else f" (OCR variant สำรอง #{i}: {lang}/psm{psm}/{dpi}dpi)"
+            log.info(f"bbl: กู้ค่าได้ {len(gained)} target เพิ่ม{tag}: {', '.join(sorted(gained))}")
+        result.update(r)
+        tiers_used.update(tu)
+        remaining -= gained
+
+    if remaining:
+        log.error(f"extract_rates: อ่านค่าไม่ได้แม้ลองครบ {len(OCR_VARIANTS)} OCR variant: "
+                  f"{', '.join(sorted(remaining))} — ปล่อยว่างไว้ (ไม่เดาค่า)")
+
     if not result:
         log.error("extract_rates: อ่านค่าไม่ได้เลยสักตัว (ทุก target ล้มเหลว)")
         return None
-    if failed:
-        log.warning(f"extract_rates: ข้าม {len(failed)} target ที่อ่านไม่ได้: {', '.join(failed)} "
-                    f"(อีก {len(result)} ตัวอ่านได้ปกติ)")
 
     result["tiers_used"] = tiers_used
     return result
@@ -530,28 +595,34 @@ def _match_month(sk: str) -> int | None:
 def get_effective_date(pdf_bytes: bytes) -> str | None:
     """ดึงวันที่มีผลจากหัวกระดาษหน้า 1 ("มีผลบังคับใช้ตั้งแต่ วันที่ 18 มิถุนายน 2569 เป็นต้นไป") → YYYY-MM-DD
     OCR เฉพาะแถบบน 25% ของหน้า — เร็วกว่าและแม่นกว่า OCR ทั้งหน้า
-    ระวัง: ท้ายหน้ามี "ประกาศ ณ วันที่ ..." ซึ่งเป็นคนละวัน จึงเลือกบรรทัดที่มี "มีผลบังคับใช้" ก่อนเสมอ"""
-    png = _render_page1_png(pdf_bytes, top_frac=0.25)
-    if png is None:
-        return None
-    words = _ocr_words(png)
-    if not words:
-        log.error("bbl.get_effective_date: OCR หัวกระดาษไม่ได้ข้อความ")
-        return None
+    ระวัง: ท้ายหน้ามี "ประกาศ ณ วันที่ ..." ซึ่งเป็นคนละวัน จึงเลือกบรรทัดที่มี "มีผลบังคับใช้" ก่อนเสมอ
 
-    lines = _group_lines(words)
-    candidates = [l for l in lines if _SK_EFFECTIVE in thai_skeleton(l["text"])] or lines
-    for line in candidates:
-        for m in _DATE_RE.finditer(line["text"]):
-            day_s, mid, year_s = m.groups()
-            month = _match_month(thai_skeleton(mid))
-            if not month:
-                continue
-            try:
-                return f"{int(year_s) - 543:04d}-{month:02d}-{int(day_s):02d}"
-            except ValueError:
-                continue
-    log.error("bbl.get_effective_date: ไม่พบวันที่มีผลในหัวกระดาษ (OCR อ่านไม่ออก/รูปแบบเปลี่ยน)")
+    ไล่ลอง OCR_VARIANTS เหมือน extract_rates — ไฟล์ปกติเจอวันที่ตั้งแต่ variant แรกและไม่แตะ variant อื่น
+    (ไม่มี cache เหมือน _page1_lines เพราะ crop 25% บนคนละภาพกับตารางเต็มหน้า และถูกเรียกครั้งเดียวต่อไฟล์)"""
+    for variant in OCR_VARIANTS:
+        lang, psm, dpi = variant
+        png = _render_page1_png(pdf_bytes, top_frac=0.25, dpi=dpi)
+        if png is None:
+            continue
+        words = _ocr_words(png, lang=lang, psm=psm, dpi=dpi)
+        if not words:
+            continue
+
+        lines = _group_lines(words)
+        candidates = [l for l in lines if _SK_EFFECTIVE in thai_skeleton(l["text"])] or lines
+        for line in candidates:
+            for m in _DATE_RE.finditer(line["text"]):
+                day_s, mid, year_s = m.groups()
+                month = _match_month(thai_skeleton(mid))
+                if not month:
+                    continue
+                try:
+                    return f"{int(year_s) - 543:04d}-{month:02d}-{int(day_s):02d}"
+                except ValueError:
+                    continue
+
+    log.error("bbl.get_effective_date: ไม่พบวันที่มีผลในหัวกระดาษ (OCR อ่านไม่ออก/รูปแบบเปลี่ยน) "
+              f"แม้ลองครบ {len(OCR_VARIANTS)} OCR variant")
     return None
 
 
@@ -673,6 +744,12 @@ def discover_year(bank: dict, year: int | None = None) -> list[str]:
         elif eff_date != file_date:
             log.warning(f"[{code}] discover_year: วันที่ในเนื้อหา ({eff_date}) ไม่ตรงกับชื่อไฟล์ต้นทาง "
                         f"({file_date}) — ใช้วันที่ในเนื้อหา")
+        # todo ถูกกรองด้วยชื่อไฟล์ (file_date) มาแล้วว่าอยู่ในปี yr แต่ eff_date ที่ใช้ตั้งชื่อจริงมาจาก
+        # เนื้อหา ซึ่งอาจไม่ตรงปีกับชื่อไฟล์ต้นทาง (เคสข้างบน) — ต้องกรองซ้ำด้วย eff_date ตัวที่ใช้จริง
+        if not common.is_date_in_year(eff_date, yr):
+            log.info(f"[{code}] discover_year: {file_date} วันที่มีผลจริง ({eff_date}) ไม่ใช่ปี {yr} "
+                     f"— ข้าม (ไม่นับเป็นไฟล์ใหม่)")
+            continue
         if eff_date in existing_dates:
             continue
 

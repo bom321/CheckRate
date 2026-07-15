@@ -439,6 +439,11 @@ def discover_year(bank: dict, year: int | None = None) -> list[str]:
         if eff_date is None:
             log.warning(f"[{code}] discover_year: asset {asset_id} หาวันที่ในเนื้อหาไม่เจอ — ข้าม")
             continue
+        # AJAX ขอ "เดือนของปี yr" แต่วันที่มีผลจริงในเนื้อหาอาจเป็นคนละปี — กรองซ้ำด้วยวันที่จริง
+        if not common.is_date_in_year(eff_date, yr):
+            log.info(f"[{code}] discover_year: asset {asset_id} วันที่มีผล {eff_date} ไม่ใช่ปี {yr} "
+                     f"— ข้าม (ไม่นับเป็นไฟล์ใหม่)")
+            continue
         if eff_date in existing_dates:
             continue
 

@@ -11,8 +11,18 @@
 
 <div class="lg-actions">
   <button id="run-all" class="btn primary">▶ รันตรวจสอบทันที (ทุกธนาคาร)</button>
-  <button id="backfill-all" class="btn" title="สร้าง CSV ใหม่จาก PDF ที่เก็บไว้ — ใช้เมื่อเพิ่มอัตราที่ติดตามใหม่">↻ เติมข้อมูลย้อนหลัง (ทุกธนาคาร)</button>
-  <button id="discover-year-all" class="btn" title="ไล่ตรวจทุกวันตั้งแต่ต้นปี ดาวน์โหลด PDF ที่ยังไม่มี แล้วสร้าง CSV ใหม่ — ใช้เวลานาน เฉพาะธนาคารที่รองรับ ธนาคารอื่นจะถูกข้ามอัตโนมัติ">⬇ ค้นหาประวัติทั้งปีอย่างละเอียด</button>
+  <button id="backfill-all" class="btn" title="สร้าง CSV ใหม่จาก PDF ที่เก็บไว้ — ใช้เมื่อเพิ่มอัตราที่ติดตามใหม่ (ไฟล์ที่อ่านไว้แล้วจะใช้ผลจาก cache ไม่อ่านซ้ำ)">↻ เติมข้อมูลย้อนหลัง (ทุกธนาคาร)</button>
+  <button id="discover-year-all" class="btn" title="ไล่ตรวจทุกวันของปีที่เลือก ดาวน์โหลด PDF ที่ยังไม่มี แล้วสร้าง CSV ใหม่ — ใช้เวลานาน เฉพาะธนาคารที่รองรับ ธนาคารอื่นจะถูกข้ามอัตโนมัติ">⬇ ค้นหาประวัติทั้งปีอย่างละเอียด</button>
+  {# ค่าเริ่มต้นเป็น "ทั้งหมด" ตั้งใจ: backfill จะได้ใช้ cache (ไม่บังคับอ่านซ้ำ) ส่วน discover-year
+     ที่ไม่ได้ส่งปีไป ฝั่ง monitor จะ default เป็นปีปัจจุบันให้เองอยู่แล้ว #}
+  <label class="f-sel lg-year" title="ปีที่ใช้กับปุ่ม 'เติมข้อมูลย้อนหลัง' (บังคับอ่าน PDF ของปีนั้นใหม่ ข้าม cache) และ 'ค้นหาประวัติทั้งปี' (ปีที่จะไปดาวน์โหลด)">ปี
+    <select id="year-select" data-run-trigger>
+      <option value="">ทั้งหมด (ใช้ cache)</option>
+      {% for y in year_options %}
+        <option value="{{ y }}">{{ y + 543 }}</option>
+      {% endfor %}
+    </select>
+  </label>
   <button id="test-email" class="btn">✉ ทดสอบส่งอีเมล</button>
   <span id="run-status" class="status-pill idle">พร้อมทำงาน</span>
 </div>
