@@ -103,7 +103,11 @@
   {% endfor %}
 </div>
 
-<!-- ── สรุปการเปลี่ยนแปลงรายธนาคาร + ตัวกรองเดือน ── -->
+<!-- ── สรุปการเปลี่ยนแปลงรายธนาคาร + ตัวกรองเดือน
+     กติกาการกาง/พับ: ทุกแถวที่เปลี่ยน (item.products มีแต่ times >= 1 อยู่แล้ว) เป็น <details>
+     กางดูไทม์ไลน์ได้เสมอ เพราะไทม์ไลน์บอก "วันที่ประกาศ" ของแต่ละครั้ง ซึ่งสรุปแถวเดียวไม่บอก
+     แถวที่ประกาศซ้ำ (times > 1) กางค้างไว้แต่แรก (attr `open`) เพราะเดิมแสดงไทม์ไลน์ให้เห็นตลอด
+     อยู่แล้ว การพับซ่อนไว้เท่ากับซ่อนข้อมูลที่เคยเห็น — ยังพับเองได้ตามใจ ── -->
 <div class="ov-panel">
   <div class="ov-panel-head">
     <div class="ov-panel-title">สรุปการเปลี่ยนแปลงรายธนาคาร</div>
@@ -145,8 +149,8 @@
   </div>
 
   {% for p in item.products %}
-  <div class="ov-row">
-    <div class="ov-grid">
+  <details class="ov-row" {{ 'open' if p.times > 1 }}>
+    <summary class="ov-grid">
       <div class="ov-prod">
         <div class="ov-prod-name">
           {{ p.label }}
@@ -156,28 +160,24 @@
       </div>
       <div class="ov-num prev">{{ (p.previous ~ '%') if p.previous else '—' }}</div>
       <div class="ov-num cur">{{ (p.current ~ '%') if p.current else '—' }}</div>
-      <div class="ov-times {{ 'multi' if p.times > 1 }}">{{ p.times }} ครั้ง</div>
+      <div class="ov-times {{ 'multi' if p.times > 1 }}">{{ p.times }} ครั้ง ▾</div>
       <div class="ov-net {{ 'up' if p.net and p.net > 0 else ('down' if p.net and p.net < 0 else 'flat') }}">
         {{ '%+.2f%%'|format(p.net) if p.net is not none else '—' }}
       </div>
-    </div>
-
-    {# ประกาศซ้ำในเดือนเดียว — กางให้เห็นว่าขยับกี่ครั้ง ครั้งละเท่าไร #}
-    {% if p.times > 1 %}
+    </summary>
     <div class="ov-timeline">
       <div class="ov-timeline-cap">ประวัติการประกาศเดือนนี้</div>
       {% for t in p.timeline %}
       <div class="ov-tl-row">
         <span class="date">{{ t.date|thai_date }}</span>
         <span class="from">{{ t.before }}%</span>
-        <span class="arrow">→</span>
-        <span class="to">{{ t.after }}%</span>
+        <span class="to"><span class="arrow" aria-hidden="true">→</span>{{ t.after }}%</span>
+        <span class="seq">ครั้งที่ {{ loop.index }}</span>
         <span class="delta {{ 'up' if t.delta > 0 else 'down' }}">{{ '%+.2f%%'|format(t.delta) }}</span>
       </div>
       {% endfor %}
     </div>
-    {% endif %}
-  </div>
+  </details>
   {% else %}
   <div class="ov-quiet">
     {% if item.no_prev %}

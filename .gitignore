@@ -1,5 +1,9 @@
 .env
 data/
+# secret เซ็น session cookie — generate เองตอนรัน เก็บใน DATA_DIR
+# (รันโดยไม่ตั้ง DATA_DIR จะตกมาอยู่ที่ app/monitor/ ตาม common.OUTPUT_DIR)
+.session_secret
+app/monitor/.session_secret
 .venv/
 __pycache__/
 *.pyc

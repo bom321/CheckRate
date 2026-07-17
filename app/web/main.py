@@ -178,6 +178,10 @@ def _depositor_pill(value: str | None) -> dict:
     return {"slug": "other", "label": label}
 
 
+def _target_label(t: dict) -> str:
+    return t.get("alias") or t.get("label") or t["key"]
+
+
 def _bank_month_summary(bank: dict, month: str) -> dict:
     """สรุปของธนาคารหนึ่งในเดือนหนึ่ง: ประกาศกี่ครั้ง · อัตราไหนเปลี่ยนบ้าง · เปลี่ยนกี่ครั้ง
 
@@ -217,9 +221,9 @@ def _bank_month_summary(bank: dict, month: str) -> dict:
         # ระวัง: loop ข้างบนข้ามค่าว่างไปเงียบ ๆ (v is None: continue) ทำให้ 'last' ถูกยกมาจากประกาศ
         # ก่อนหน้าโดยผู้ใช้ไม่รู้ตัว — เช็คตรงนี้แยกจากค่า 'last' ว่าแถวล่าสุดจริง ๆ ของเดือนว่างหรือไม่
         if latest_in_month is not None and _fmt_rate(latest_in_month.get(key)) is None:
-            unreadable.append(t.get("alias") or t.get("label") or key)
+            unreadable.append(_target_label(t))
         products_all.append({
-            "label": t.get("alias") or t.get("label") or key,
+            "label": _target_label(t),
             "depositor": t.get("depositor") or "บุคคลธรรมดา",   # ไม่ระบุใน config = อัตราของบุคคลธรรมดา
             "dep": _depositor_pill(t.get("depositor")),
             "key": key, "previous": prev, "current": last,
@@ -297,24 +301,24 @@ def bank_detail(request: Request, code: str, month: str | None = None):
         month = values[0] if values else datetime.now().strftime("%Y-%m")
     summary = _bank_month_summary(bank, month)
 
-    # ข้อมูลกราฟ: labels = วันที่, 1 dataset ต่อ 1 rate key — แสดงย้อนหลังไม่เกิน 12 ครั้งล่าสุด
-    # (history เรียงเก่า→ใหม่อยู่แล้ว slice ท้ายสุด = 12 ครั้งล่าสุด; ธนาคารที่มีน้อยกว่าได้ครบตามเดิม)
-    chart_history = history[-12:]
-    labels = [thaidate.thai_date(r.get("effective_date", "")) for r in chart_history]
+    # ข้อมูลกราฟ: labels = วันที่ไทย (โชว์), dates = ISO (ให้ JS คำนวณช่วงเวลา) — ส่งประวัติทั้งหมด
+    # ไม่ slice เพราะปุ่มช่วงเวลา "ทั้งหมด" ต้องมีข้อมูลครบ การกรองตามช่วงทำใน detail.js แทน
+    dates = [r.get("effective_date", "") for r in history]
+    labels = [thaidate.thai_date(d) for d in dates]
     datasets = []
     for t in targets:
         key = t["key"]
         series = []
-        for r in chart_history:
+        for r in history:
             v = _fmt_rate(r.get(key))
             series.append(float(v) if v is not None else None)
-        datasets.append({"key": key, "label": t.get("alias") or t.get("label") or key,
+        datasets.append({"key": key, "label": _target_label(t),
                          "dep": _depositor_pill(t.get("depositor")), "data": series})
 
     return templates.TemplateResponse(request, "bank_detail.html", {
         "active": "overview", "bank": bank, "targets": targets,
         "item": summary, "month": month, "month_options": options,
-        "chart_labels": labels, "chart_datasets": datasets, "has_data": bool(history),
+        "chart_labels": labels, "chart_dates": dates, "chart_datasets": datasets, "has_data": bool(history),
         "last_checked": da.last_checked(code),
         "supports_discover_year": da.supports_discover_year(bank),
         "pdf_years": pdf_years,
@@ -347,7 +351,7 @@ _MANUAL_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 @app.get("/bank/{code}/manual", response_class=HTMLResponse, dependencies=[Depends(auth.require_admin_page)])
-def bank_manual_page(request: Request, code: str):
+def bank_manual_page(request: Request, code: str, month: str | None = None):
     bank = da.get_bank(code)
     if bank is None:
         raise HTTPException(404, f"ไม่พบธนาคาร {code}")
@@ -356,9 +360,18 @@ def bank_manual_page(request: Request, code: str):
     history = da.read_history(code)   # เก่า → ใหม่ (จาก data_access)
     manual = da.load_manual(code)
 
+    # เดือนที่แก้ได้จริง = เดือนที่มีแถวใน CSV เท่านั้น (ต่างจาก bank_detail ที่โชว์เดือนว่างได้
+    # เพราะยกค่าจากเดือนก่อนมา — หน้านี้ไม่มีอะไรให้แก้ถ้าเดือนนั้นไม่มีประกาศ)
+    month_options = [o for o in _month_options_counted(bank["code"]) if o["count"] > 0]
+    month_values = [o["value"] for o in month_options]
+    if month != "all" and not (month and _MONTH_RE.match(month) and month in month_values):
+        month = month_values[0] if month_values else "all"
+
     rows = []
     for r in reversed(history):       # ใหม่ → เก่า อ่านง่ายกว่าตอนไล่หาประกาศล่าสุด
         date = r.get("effective_date") or ""
+        if month != "all" and not date.startswith(month):
+            continue
         overrides = manual.get(date) or {}
         cells = {}
         for t in targets:
@@ -371,6 +384,7 @@ def bank_manual_page(request: Request, code: str):
     return templates.TemplateResponse(request, "manual.html", {
         "active": "overview", "bank": bank, "targets": targets, "rows": rows,
         "rate_min": da.MANUAL_RATE_MIN, "rate_max": da.MANUAL_RATE_MAX,
+        "month": month, "month_options": month_options, "total_rows": len(history),
     })
 
 

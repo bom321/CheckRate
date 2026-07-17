@@ -95,24 +95,6 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 a.link { color: var(--brand); text-decoration: none; font-weight: 600; }
 a.link:hover { text-decoration: underline; }
 
-/* ── การ์ด "แนวโน้มย้อนหลัง" (เส้น/แกน/ป้าย วาดเป็น SVG ใน detail.js) ── */
-.bd-trend { margin-bottom: 14px; }
-.bd-trend .ov-panel-head { align-items: flex-start; padding: 16px 22px; }
-.bd-trend-sub { font-size: 11.5px; font-weight: 400; color: var(--muted-soft); margin-top: 2px; }
-.bd-trend-badge { font-size: 11.5px; font-weight: 500; padding: 6px 12px; border-radius: 20px; white-space: nowrap; }
-.bd-trend-badge.down { background: var(--down-soft); color: var(--down); }
-.bd-trend-badge.up { background: var(--brand-soft); color: var(--brand); }
-.bd-trend-badge.mixed { background: var(--warn-soft); color: var(--warn); }
-.bd-trend-legend {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px;
-  padding: 13px 22px 4px; font-size: 11.5px; font-weight: 500; color: #5C5F65;
-}
-.bd-trend-legend .item { display: flex; align-items: center; gap: 7px; }
-.bd-trend-legend .sw { width: 18px; height: 3px; border-radius: 2px; }
-.bd-trend-legend .unit { margin-left: auto; font-weight: 400; font-size: 11px; color: var(--muted-soft); letter-spacing: .02em; }
-.bd-trend-body { padding: 4px 22px 20px; }
-.bd-trend-svg { width: 100%; height: auto; display: block; font-family: var(--sans); }
-
 /* ── ฟอร์ม ── */
 input[type=text], input[type=number], input[type=url], textarea, select {
   font-family: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line);
@@ -510,27 +492,36 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 .ov-net.down { color: var(--down); }
 .ov-net.flat { color: var(--muted-soft); }
 
+/* ไทม์ไลน์ของแถวที่กางออก — ใช้คอลัมน์ชุดเดียวกับ .ov-grid เพื่อให้ตัวเลขตรงกับหัวตารางด้านบน
+   (วันที่=ผลิตภัณฑ์ · ค่าก่อน=ครั้งก่อน · ค่าหลัง=ปัจจุบัน · ครั้งที่=ประกาศ · ส่วนต่าง=เปลี่ยนสุทธิ)
+   margin ติดลบ = ดันพื้นหลังออกไปเต็มความกว้างแถว แล้ว padding ดันเนื้อในกลับมาให้ตรงกับ padding
+   ของ .ov-row/.ov-cols พอดี — ถ้าแก้ padding ของสองตัวนั้นต้องแก้ที่นี่ด้วย */
 .ov-timeline {
-  margin-top: 11px; padding: 11px 14px; background: var(--surface);
-  border: 1px solid #EFECE7; border-radius: 10px;
+  margin: 11px -22px -13px -34px; padding: 10px 22px 12px 34px; background: var(--surface);
+  border-top: 1px solid #EFECE7;
   display: flex; flex-direction: column; gap: 9px;
 }
 .ov-timeline-cap { font-size: 10px; font-weight: 500; color: var(--muted-soft); }
 .ov-tl-row {
-  display: flex; align-items: center; gap: 12px; font-variant-numeric: tabular-nums; font-size: 13px;
+  display: grid; grid-template-columns: 2.6fr 1fr 1fr .8fr 1fr; gap: 14px; align-items: center;
+  font-variant-numeric: tabular-nums; font-size: 13px;
 }
-.ov-tl-row .date { font-size: 11.5px; font-weight: 500; color: var(--muted); min-width: 74px; }
-.ov-tl-row .from { color: var(--muted-soft); }
-.ov-tl-row .arrow { color: #C7C4BD; font-size: 12px; }
-.ov-tl-row .to { font-weight: 600; }
-.ov-tl-row .delta { margin-left: auto; font-size: 12px; font-weight: 600; }
+.ov-tl-row .date { font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.ov-tl-row .from { text-align: right; color: var(--muted-soft); }
+/* ลูกศรอยู่ในเซลล์เดียวกับค่าใหม่ จะได้ตกอยู่ระหว่างสองคอลัมน์ตัวเลขพอดีโดยไม่กินคอลัมน์ของตัวเอง */
+.ov-tl-row .to {
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-weight: 600;
+}
+.ov-tl-row .arrow { color: #C7C4BD; font-size: 12px; font-weight: 400; }
+.ov-tl-row .seq { text-align: center; font-size: 11px; color: var(--muted-soft); }
+.ov-tl-row .delta { text-align: right; font-size: 12px; font-weight: 600; }
 .ov-tl-row .delta.up { color: var(--up); }
 .ov-tl-row .delta.down { color: var(--down); }
 
 .ov-quiet { padding: 13px 22px 13px 34px; font-size: 12.5px; color: var(--muted-soft); }
 
 
-/* ══════════════ Bank detail (mockup 5a) ══════════════ */
+/* ══════════════ Bank detail (mockup 7a–7d) ══════════════ */
 .bd-crumb {
   display: flex; align-items: center; gap: 7px; margin-bottom: 20px;
   font-size: 12.5px; font-weight: 500; color: var(--muted-soft);
@@ -548,7 +539,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
   width: 58px; height: 58px; flex: none; border-radius: 14px; object-fit: contain;
   background: var(--card); border: 1px solid var(--line);
 }
-/* หน้ารายละเอียดธนาคารใช้ sans ล้วนตาม design (5a) — ไม่มี mono ปนเหมือนหน้าอื่น */
+/* หน้ารายละเอียดธนาคารใช้ sans ล้วนตาม design (7a–7d) — ไม่มี mono ปนเหมือนหน้าอื่น */
 .bd-logo.mono {
   display: flex; align-items: center; justify-content: center;
   font: 600 22px var(--sans); color: var(--muted);
@@ -565,8 +556,51 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 .bd-hero b { font-weight: 600; }
 .bd-hero b.accent { color: var(--brand); }
 
-/* toolbar ของธนาคารนี้ — status pill ชิดขวาเสมอ (5a) */
+/* ── การ์ด "แนวโน้มย้อนหลัง" (เส้น/แกน/ป้าย วาดเป็น SVG ใน detail.js) ── */
+.bd-trend { margin-bottom: 14px; }
+.bd-trend .ov-panel-head { align-items: flex-start; padding: 16px 22px; }
+.bd-trend-sub { font-size: 12.5px; font-weight: 400; color: var(--muted-soft); margin-top: 2px; }
+.bd-trend-badge { font-size: 12.5px; font-weight: 500; padding: 6px 12px; border-radius: 20px; white-space: nowrap; }
+.bd-trend-badge.down { background: var(--down-soft); color: var(--down); }
+.bd-trend-badge.up { background: var(--brand-soft); color: var(--brand); }
+.bd-trend-badge.mixed { background: var(--warn-soft); color: var(--warn); }
+.bd-trend-legend {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px;
+  padding: 13px 22px 4px; font-size: 13px; font-weight: 500; color: #5C5F65;
+}
+/* .item กดได้ — เพิ่ม/ซ่อนเส้นในกราฟ (ดีไซน์โชว์แค่ 3 เส้นแรกเป็นค่าเริ่มต้น ธนาคารที่ติดตามเกิน 3
+   รายการต้องกดเพิ่มเอง กันป้ายค่าท้ายเส้นทับกันจนอ่านไม่ออกถ้าเปิดหมดพร้อมกัน) */
+.bd-trend-legend .item {
+  display: flex; align-items: center; gap: 7px; cursor: pointer; border-radius: 6px;
+  padding: 2px 4px; margin: -2px -4px;
+}
+.bd-trend-legend .item:hover { background: var(--surface); }
+.bd-trend-legend .item:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.bd-trend-legend .item.off { opacity: .4; }
+.bd-trend-legend .sw { width: 18px; height: 3px; border-radius: 2px; flex: none; }
+.bd-trend-legend .unit { margin-left: auto; font-weight: 400; font-size: 12.5px; color: var(--muted-soft); letter-spacing: .02em; }
+.bd-trend-body { padding: 4px 22px 20px; }
+.bd-trend-svg { width: 100%; height: auto; display: block; font-family: var(--sans); }
+/* ปุ่มช่วงเวลาใต้กราฟ — สลับด้วย .on จาก detail.js กันข้อมูลไม่พอด้วย :disabled */
+.bd-trend-range { display: flex; gap: 6px; padding: 0 22px 18px; flex-wrap: wrap; }
+.bd-trend-range button {
+  font: 500 13px var(--sans); padding: 7px 13px; border-radius: 8px;
+  border: none; background: none; color: #6E7178; cursor: pointer;
+}
+.bd-trend-range button:hover:not(:disabled) { background: var(--surface); }
+.bd-trend-range button.on { font-weight: 600; background: var(--ink); color: #fff; }
+.bd-trend-range button:disabled { opacity: .4; cursor: default; }
+
+/* toolbar ของธนาคารนี้ — status pill ชิดขวาเสมอ · ปุ่มรอง (เติมข้อมูลย้อนหลัง / ค้นหาประวัติทั้งปี /
+   กรอกค่าเอง) เป็นไอคอนสี่เหลี่ยม 38×38 ทุกความกว้าง (ต่างจากหน้าอื่นที่ยุบเหลือไอคอนแค่บนมือถือ —
+   ทูลบาร์หน้านี้แน่นกว่า จึงตัดสินใจเฉพาะหน้านี้ตาม 7a–7d) .btn-icon ใช้ทั้ง <button> และ <a>
+   จึงต้องตั้ง display เอง (.btn ฐานไม่ตั้ง display ปกติ <a> จะเป็น inline ทำให้ width/height ไม่มีผล) */
 .toolbar .status-pill { margin-left: auto; }
+.toolbar .btn.btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; padding: 0; flex: none; font-size: 14px;
+}
+.toolbar .btn.btn-icon .btn-txt { display: none; }
 
 .bd-files-count { font-size: 12px; color: var(--muted-soft); }
 .bd-year { border-top: 1px solid var(--line); }
@@ -595,15 +629,13 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 .bd-file a { color: #5C5F65; text-decoration: none; font-size: 15px; }
 .bd-file a:hover { color: var(--brand); }
 
-/* ผลิตภัณฑ์เป็น <details> เพื่อรองรับทั้งตาราง (desktop) และการ์ดพับ/กาง (มือถือ) — detail.js สั่ง open ตาม breakpoint */
-.bd-rows summary.ov-grid { list-style: none; cursor: default; }
-.bd-rows summary.ov-grid::-webkit-details-marker { display: none; }
-.ov-chev, .ov-prod-sub-mob { display: none; }   /* มีความหมายเฉพาะบนมือถือ — ซ่อนไว้บน desktop */
-
-@media (min-width: 721px) {
-  /* desktop ให้ตรงกับ 5a เป๊ะ — กางไทม์ไลน์เฉพาะแถว "ประกาศซ้ำ" ไม่ใช่ทุกแถวที่เปลี่ยน */
-  .bd-rows .ov-row.once .ov-timeline { display: none; }
-}
+/* ผลิตภัณฑ์เป็น <details> ทุกแถวที่เปลี่ยน (times >= 1) ทั้งหน้า overview และ bank detail — กางดู
+   ไทม์ไลน์วันที่ประกาศได้เสมอ แถวที่ไม่เปลี่ยนเลย (times == 0, มีแค่ใน bank detail) ยังเป็น <div>
+   ธรรมดา กางไม่ได้ (summary ก็บอกค่าครบแล้ว กางไปก็เห็นข้อมูลซ้ำ) ใช้ selector เดียวกันสองหน้าเพราะ
+   .ov-grid ไม่ได้ใช้ที่อื่น */
+summary.ov-grid { list-style: none; cursor: pointer; }
+summary.ov-grid::-webkit-details-marker { display: none; }
+.ov-prod-sub-mob { display: none; }   /* มีความหมายเฉพาะบนมือถือ — ซ่อนไว้บน desktop */
 
 @media (max-width: 900px) {
   .ov-hero h1 { font-size: 32px; }
@@ -697,36 +729,44 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
   .ov-row { padding: 14px 16px; }
   .ov-quiet, .ov-group, .ov-panel-head { padding-left: 16px; padding-right: 16px; }
 
-  /* ═══ หน้ารายละเอียดธนาคาร (5b) ═══ */
+  /* มือถือไม่มีหัวตาราง 5 คอลัมน์ให้ตรงด้วย — ไทม์ไลน์กลับไปเป็นการ์ดเรียงบรรทัดเดียวเหมือนเดิม */
+  .ov-timeline {
+    margin: 11px 0 0; padding: 11px 14px; border: 1px solid #EFECE7; border-radius: 10px;
+  }
+  .ov-tl-row { display: flex; gap: 12px; }
+  .ov-tl-row .date { min-width: 74px; }
+  .ov-tl-row .seq { display: none; }
+  .ov-tl-row .delta { margin-left: auto; }
+
+  /* ═══ หน้ารายละเอียดธนาคาร (มือถือ — 7a–7d ไม่มีเวอร์ชันมือถือ ใช้โครงเดิมจาก 5b ต่อไป) ═══ */
   .bd-hero { display: block; font-size: 20px; }
   .bd-name { font-size: 21px; }
   .bd-logo { width: 46px; height: 46px; }
   .bd-meta { font-size: 11px; }
 
-  /* ปุ่มรอง (เติมข้อมูลย้อนหลัง / ค้นหาประวัติทั้งปี) ย่อเหลือไอคอนสี่เหลี่ยม — ปุ่มหลักยังมีข้อความเต็ม */
-  .toolbar .btn.btn-icon { width: 38px; height: 38px; padding: 0; flex: none; }
-  .toolbar .btn.btn-icon .btn-txt { display: none; }
+  /* ปุ่มไอคอนรอง (.toolbar .btn.btn-icon) เป็นสี่เหลี่ยม 38×38 ทุกความกว้างอยู่แล้ว — กำหนดไว้แบบ global
+     ใน "Bank detail (mockup 7a–7d)" ด้านบน มือถือแค่ให้ปุ่มหลักยืดเต็มที่เหลือ */
   .toolbar .btn.primary { flex: 1; }
   .toolbar .f-sel { flex: 1 1 100%; }   /* ตัวเลือกปี — เต็มบรรทัดของตัวเองแทนที่จะบีบเป็นเส้นเล็ก ๆ */
   .toolbar .status-pill { margin-left: 0; width: fit-content; }
 
-  /* ผลิตภัณฑ์เป็นการ์ดพับ/กาง — scope ใต้ .bd-rows เท่านั้น ไม่แตะ .ov-row ของหน้าภาพรวม (ยังเป็น div ธรรมดา) */
+  /* การ์ดผลิตภัณฑ์บนมือถือ — เนื้อหาเดียวกับ desktop แต่เอาตัวเลขไปไว้ใน .ov-prod-sub-mob แทน
+     คอลัมน์ตัวเลข (ov-num/ov-times/ov-net ที่ desktop ใช้) เพราะที่แคบเกินจะเทียบ 5 คอลัมน์
+     แถวที่ประกาศซ้ำ (times > 1) ยังเป็น <details> กางได้เหมือน desktop — ป้าย "ประกาศซ้ำ" +
+     ข้อความ "แตะดูรายละเอียด" ใน sub-mob คือตัวบอกว่ากางได้ (ไม่มี chevron หมุนแยกต่างหาก) */
   .bd-rows { display: flex; flex-direction: column; gap: 10px; }
   .bd-rows .ov-row {
     background: var(--card); border: 1px solid var(--line); border-radius: 14px;
     padding: 0; overflow: hidden;
   }
-  .bd-rows .ov-grid { grid-template-columns: 1fr auto; gap: 10px; padding: 13px 14px; }
-  .bd-rows .ov-prod { grid-column: 1; }
+  .bd-rows .ov-grid { grid-template-columns: 1fr; gap: 0; padding: 13px 14px; }
   .bd-rows .ov-prod-sub { display: none; }
   .bd-rows .ov-prod-sub-mob {
     display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 4px;
   }
   .bd-rows .ov-prod-sub-mob .sub-mob-txt { font: 400 10.5px var(--sans); color: var(--muted-soft); }
   .bd-rows .ov-num, .bd-rows .ov-times, .bd-rows .ov-net { display: none; }
-  .bd-rows .ov-chev { display: inline-block; font-size: 14px; color: var(--muted-soft); transition: transform .15s; }
-  .bd-rows .ov-row[open] .ov-chev { transform: rotate(180deg); }
-  .bd-rows .ov-timeline { margin: 0 14px 13px; }
+  .bd-rows .ov-timeline { margin: 0 14px 13px; border-top: 1px solid #EFECE7; }
   .bd-rows .ov-quiet { padding: 13px 14px; }
 
   /* กราฟแนวโน้ม — design ไม่มีส่วนนี้บนมือถือ */

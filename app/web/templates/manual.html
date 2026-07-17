@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="bd-crumb">
-  <a href="/bank/{{ bank.code }}">{{ bank.name|replace('ธนาคาร', '') }}</a><span>›</span><span class="now">กรอกค่าเอง</span>
+  <a href="/bank/{{ bank.code }}{{ '?month=' ~ month if month != 'all' else '' }}">{{ bank.name|replace('ธนาคาร', '') }}</a><span>›</span><span class="now">กรอกค่าเอง</span>
 </div>
 
 <div class="pg-head">
@@ -13,6 +13,14 @@
       เปิด PDF เทียบข้าง ๆ ได้จากลิงก์คอลัมน์ขวาสุด</p>
   </div>
   <div class="pg-head-actions">
+    <label class="f-sel" title="กรองแถวตามเดือนที่ประกาศมีผล">เดือน
+      <select id="manual-month-select" data-code="{{ bank.code }}">
+        <option value="all" {{ 'selected' if month == 'all' }}>ทุกเดือน ({{ total_rows }} ประกาศ)</option>
+        {% for m in month_options %}
+          <option value="{{ m.value }}" {{ 'selected' if m.value == month }}>{{ m.value|thai_month }} · {{ m.count }} ประกาศ</option>
+        {% endfor %}
+      </select>
+    </label>
     <button id="save-manual" class="btn primary" data-code="{{ bank.code }}">บันทึกและ rebuild ข้อมูล</button>
   </div>
 </div>

@@ -10,10 +10,11 @@
 <!-- แอ็กชันของธนาคารนี้ (id เดิม — run.js ผูกไว้อยู่) เฉพาะผู้ดูแลที่ login แล้วเท่านั้น -->
 <div class="toolbar">
   <button id="run-bank" class="btn primary" data-code="{{ bank.code }}">▶ รันตรวจสอบธนาคารนี้</button>
-  <button id="backfill-bank" class="btn btn-icon" data-code="{{ bank.code }}" title="สร้างข้อมูลย้อนหลังจาก PDF ที่เก็บไว้ — ใช้เมื่อเพิ่มอัตราที่ติดตามใหม่">↻ <span class="btn-txt">เติมข้อมูลย้อนหลัง</span></button>
+  <button id="backfill-bank" class="btn btn-icon" data-code="{{ bank.code }}" aria-label="เติมข้อมูลย้อนหลัง" title="สร้างข้อมูลย้อนหลังจาก PDF ที่เก็บไว้ — ใช้เมื่อเพิ่มอัตราที่ติดตามใหม่">↻ <span class="btn-txt">เติมข้อมูลย้อนหลัง</span></button>
   {% if supports_discover_year %}
-  <button id="discover-year-bank" class="btn btn-icon" data-code="{{ bank.code }}" title="สแกนหาประกาศทั้งปีแบบละเอียด (ใช้เวลานาน) เผื่อมีไฟล์ที่การตรวจสอบปกติพลาดไป — กดเป็นครั้งคราวพอ">🔍 <span class="btn-txt">ค้นหาประวัติทั้งปีอย่างละเอียด</span></button>
+  <button id="discover-year-bank" class="btn btn-icon" data-code="{{ bank.code }}" aria-label="ค้นหาประวัติทั้งปีอย่างละเอียด" title="สแกนหาประกาศทั้งปีแบบละเอียด (ใช้เวลานาน) เผื่อมีไฟล์ที่การตรวจสอบปกติพลาดไป — กดเป็นครั้งคราวพอ">🔍 <span class="btn-txt">ค้นหาประวัติทั้งปีอย่างละเอียด</span></button>
   {% endif %}
+  <a href="/bank/{{ bank.code }}/manual?month={{ month }}" class="btn btn-icon" aria-label="กรอก/แก้ค่าเอง" title="แก้ค่าที่ระบบอ่านจาก PDF ไม่ได้หรืออ่านผิด — ใช้ได้แม้ไม่มีแถบเตือนแดง (เช่น OCR อ่านผิดเป็นตัวเลขที่ดูปกติ)">✎ <span class="btn-txt">กรอก/แก้ค่าเอง</span></a>
   {# ค่าเริ่มต้นเป็น "ทั้งหมด" ตั้งใจ: backfill จะได้ใช้ cache (ไม่บังคับอ่านซ้ำ) ส่วน discover-year
      ที่ไม่ได้ส่งปีไป ฝั่ง monitor จะ default เป็นปีปัจจุบันให้เองอยู่แล้ว — แสดงเสมอไม่ผูกกับ
      supports_discover_year เพราะปุ่มเติมข้อมูลย้อนหลังใช้ปีนี้ด้วยและมีทุกธนาคาร #}
@@ -80,13 +81,14 @@
 </div>
 
 {% if has_data %}
-<!-- แนวโน้มย้อนหลัง (12 ประกาศล่าสุด) — desktop เท่านั้น design ไม่มีส่วนนี้บนมือถือ
-     หัวการ์ด/ตัวคั่นสี/แกน/ป้ายค่า วาดโดย detail.js ทั้งหมด (ดูสัญญาที่ส่งให้ใน #chart-data) -->
+<!-- แนวโน้มย้อนหลัง — desktop เท่านั้น design ไม่มีส่วนนี้บนมือถือ
+     ส่ง history ทั้งหมดผ่าน #chart-data แล้วให้ detail.js กรองตามปุ่มช่วงเวลา (.bd-trend-range) เอง
+     หัวการ์ด/ตัวคั่นสี/แกน/ป้ายค่า วาดโดย detail.js ทั้งหมด -->
 <div class="ov-panel bd-trend">
   <div class="ov-panel-head">
     <div>
       <div class="ov-panel-title">แนวโน้มย้อนหลัง</div>
-      <div class="bd-trend-sub">อัตราแต่ละระยะ ตามวันที่ประกาศมีผล · <span id="trend-count"></span> ประกาศล่าสุด</div>
+      <div class="bd-trend-sub">อัตราแต่ละระยะ ตามวันที่ประกาศมีผล · <span id="trend-count"></span> ประกาศ · <span id="trend-span"></span></div>
     </div>
     <span id="trend-badge" class="bd-trend-badge" hidden></span>
   </div>
@@ -94,7 +96,13 @@
     <span class="unit">% ต่อปี</span>
   </div>
   <div class="bd-trend-body">
-    <svg id="trend" class="bd-trend-svg" viewBox="0 0 1000 260" role="img" aria-label="กราฟแนวโน้มอัตราดอกเบี้ยย้อนหลัง"></svg>
+    <svg id="trend" class="bd-trend-svg" viewBox="0 0 1500 260" role="img" aria-label="กราฟแนวโน้มอัตราดอกเบี้ยย้อนหลัง"></svg>
+  </div>
+  <div class="bd-trend-range" role="group" aria-label="ช่วงเวลาของกราฟ">
+    <button type="button" data-months="3">3 เดือน</button>
+    <button type="button" data-months="6">6 เดือน</button>
+    <button type="button" data-months="12" class="on">1 ปี</button>
+    <button type="button" data-months="0">ทั้งหมด</button>
   </div>
 </div>
 
@@ -103,11 +111,16 @@
      ค่าใน "ปัจจุบัน" ของตารางด้านล่างอาจเป็นค่าที่ยกมาจากประกาศก่อนหน้าเงียบ ๆ — ต้องเตือนให้เห็นชัด #}
 <div class="notice err">
   ⚠ อ่านค่าไม่ได้จากประกาศล่าสุดของเดือนนี้ ({{ item.unreadable|length }} รายการ): {{ item.unreadable|join(', ') }}
-  {% if is_admin %} — <a href="/bank/{{ bank.code }}/manual" class="link">กรอกค่าเอง</a>{% endif %}
+  {% if is_admin %} — <a href="/bank/{{ bank.code }}/manual?month={{ month }}" class="link">กรอกค่าเอง</a>{% endif %}
 </div>
 {% endif %}
 
-<!-- อัตราทุกระยะในเดือนที่เลือก -->
+<!-- อัตราทุกระยะในเดือนที่เลือก
+     กติกาการกาง/พับ: แถวที่มีการเปลี่ยน (times >= 1) ทำเป็น <details> กางดูไทม์ไลน์ได้ทั้งหมด
+     เพราะไทม์ไลน์บอก "วันที่ประกาศ" ของแต่ละครั้ง ซึ่ง summary ไม่ได้บอก (หัวคอลัมน์บอกแค่วันที่ของ
+     baseline กับประกาศล่าสุด) แถวที่ประกาศซ้ำ (times > 1) ได้ป้าย "ประกาศซ้ำ" + สีเตือนเพิ่มให้เห็นเด่น
+     เพราะ summary บอกแค่ยอดรวม baseline→ปัจจุบัน ไม่บอกว่าเดินทางยังไง
+     ส่วนแถวที่ไม่เปลี่ยนเลย (times == 0) ไทม์ไลน์ว่าง ไม่มีอะไรให้กาง — คงเป็น <div> ธรรมดา -->
 <div class="ov-panel" style="margin-top:14px">
   <div class="ov-panel-head">
     <div class="ov-panel-title">อัตราดอกเบี้ยเงินฝากทุกระยะ</div>
@@ -125,7 +138,7 @@
         <option value="">เลือกเดือน ▾</option>
         {% for m in month_options %}
           <option value="{{ m.value }}" {{ 'selected' if m.value == month }}>
-            {{ m.value|thai_month }} · {{ (m.count ~ ' ประกาศ') if m.count else 'ไม่มีประกาศ' }}
+            {{ m.value|thai_month_short }} · {{ (m.count ~ ' ประกาศ') if m.count else 'ไม่มีประกาศ' }}
           </option>
         {% endfor %}
       </select>
@@ -142,7 +155,8 @@
 
   <div class="bd-rows">
   {% for p in item.products_all %}
-  <details class="ov-row {{ 'once' if p.times == 1 }}" data-changed="{{ 1 if p.times else 0 }}" {{ 'open' if p.times }}>
+  {% if p.times %}
+  <details class="ov-row">
     <summary class="ov-grid">
       <div class="ov-prod">
         <div class="ov-prod-name">
@@ -152,34 +166,46 @@
         <div class="ov-prod-sub"><span class="pill-dep dep-{{ p.dep.slug }}">{{ p.dep.label }}</span></div>
         <div class="ov-prod-sub-mob">
           <span class="pill-dep dep-{{ p.dep.slug }}">{{ p.dep.label }}</span>
-          {% if p.times %}<span class="sub-mob-txt">· {{ p.times }} ครั้ง</span>
-          {% else %}<span class="sub-mob-txt">· {{ (p.current ~ '%') if p.current else '—' }} · ไม่เปลี่ยนแปลง</span>{% endif %}
+          <span class="sub-mob-txt">· {{ (p.previous ~ '%') if p.previous else '—' }} → {{ (p.current ~ '%') if p.current else '—' }} · {{ '%+.2f%%'|format(p.net) if p.net is not none else '—' }} · แตะดูรายละเอียด</span>
         </div>
       </div>
       <div class="ov-num prev">{{ (p.previous ~ '%') if p.previous else '—' }}</div>
       <div class="ov-num cur">{{ (p.current ~ '%') if p.current else '—' }}</div>
-      <div class="ov-times {{ 'multi' if p.times > 1 }}">{{ (p.times ~ ' ครั้ง') if p.times else '—' }}</div>
+      <div class="ov-times{{ ' multi' if p.times > 1 else '' }}">{{ p.times }} ครั้ง ▾</div>
       <div class="ov-net {{ 'up' if p.net and p.net > 0 else ('down' if p.net and p.net < 0 else 'flat') }}">
-        {{ '%+.2f%%'|format(p.net) if p.times else '—' }}
+        {{ '%+.2f%%'|format(p.net) if p.net is not none else '—' }}
       </div>
-      <span class="ov-chev" aria-hidden="true">﹀</span>
     </summary>
-
-    {% if p.times %}
     <div class="ov-timeline">
-      <div class="ov-timeline-cap">ประวัติการประกาศเดือนนี้</div>
       {% for t in p.timeline %}
       <div class="ov-tl-row">
         <span class="date">{{ t.date|thai_date }}</span>
         <span class="from">{{ t.before }}%</span>
-        <span class="arrow">→</span>
-        <span class="to">{{ t.after }}%</span>
+        <span class="to"><span class="arrow" aria-hidden="true">→</span>{{ t.after }}%</span>
+        <span class="seq">ครั้งที่ {{ loop.index }}</span>
         <span class="delta {{ 'up' if t.delta > 0 else 'down' }}">{{ '%+.2f%%'|format(t.delta) }}</span>
       </div>
       {% endfor %}
     </div>
-    {% endif %}
   </details>
+  {% else %}
+  <div class="ov-row">
+    <div class="ov-grid">
+      <div class="ov-prod">
+        <div class="ov-prod-name">{{ p.label }}</div>
+        <div class="ov-prod-sub"><span class="pill-dep dep-{{ p.dep.slug }}">{{ p.dep.label }}</span></div>
+        <div class="ov-prod-sub-mob">
+          <span class="pill-dep dep-{{ p.dep.slug }}">{{ p.dep.label }}</span>
+          <span class="sub-mob-txt">· {{ (p.current ~ '%') if p.current else '—' }} · ไม่เปลี่ยนแปลง</span>
+        </div>
+      </div>
+      <div class="ov-num prev">{{ (p.previous ~ '%') if p.previous else '—' }}</div>
+      <div class="ov-num cur">{{ (p.current ~ '%') if p.current else '—' }}</div>
+      <div class="ov-times">—</div>
+      <div class="ov-net flat">—</div>
+    </div>
+  </div>
+  {% endif %}
   {% else %}
   <div class="ov-quiet">ยังไม่มีอัตราที่ติดตามสำหรับธนาคารนี้ — เพิ่มได้ที่หน้าจัดการอัตรา</div>
   {% endfor %}
@@ -232,7 +258,7 @@
 {% block scripts %}
 {% if is_admin %}<script src="/static/js/run.js"></script>{% endif %}
 <script id="chart-data" type="application/json">
-{"labels": {{ chart_labels|tojson }}, "datasets": {{ chart_datasets|tojson }}}
+{"labels": {{ chart_labels|tojson }}, "dates": {{ chart_dates|tojson }}, "datasets": {{ chart_datasets|tojson }}}
 </script>
 <script src="/static/js/detail.js"></script>
 {% endblock %}
