@@ -125,6 +125,39 @@ docker-compose up -d --build
 
 ---
 
+## อัปเดตเวอร์ชันใหม่ — `scripts/update.sh`
+
+เมื่อโค้ดบน GitHub มี commit ใหม่ ใช้สคริปต์นี้อัปเดตให้จบในคำสั่งเดียว (git pull → build → restart →
+เช็คว่าเว็บตอบจริง) — **ใช้ได้เฉพาะกรณีที่โค้ดบน NAS เป็น git clone** ไม่ใช่ไฟล์ที่ copy ผ่าน File Station:
+
+```bash
+# ครั้งแรก (ถ้ายังไม่ได้ clone) — ติดตั้ง Git Server จาก Package Center ก่อนให้มีคำสั่ง git
+cd /volume1/bom321/Work/deposit-rate/docker
+git clone https://github.com/bom321/checkrate.git checkrate
+cd checkrate && cp .env.example .env    # แล้วแก้ .env ตามขั้นตอนที่ 3
+```
+
+### ตั้งใน DSM Task Scheduler
+**Control Panel** → **Task Scheduler** → **Create** → **Scheduled Task** → **User-defined script**
+(User: `root`) แล้วใส่:
+```bash
+sh /volume1/bom321/Work/deposit-rate/docker/checkrate/scripts/update.sh
+```
+ตั้งเวลาตามต้องการ หรือปล่อยเป็น task ที่กด **Run** เอาเองเมื่อจะอัปเดต
+
+สคริปต์ปลอดภัยเมื่อรันซ้ำ: ถ้าไม่มี commit ใหม่จะ**ข้ามการ build** (แต่ยังเช็คให้ว่าคอนเทนเนอร์ยังรันอยู่
+ถ้าดับจะ start ให้) ผลลัพธ์ออกทั้ง stdout (Task Scheduler ส่งอีเมลให้ได้ถ้าเปิด "Send run details by email")
+และไฟล์ `update.log` ในโฟลเดอร์โปรเจกต์
+
+**พฤติกรรมที่ควรรู้:**
+- ข้อมูลจริง (CSV/PDF/config ใน `HOST_DATA_DIR`) อยู่นอกโฟลเดอร์โปรเจกต์ — สคริปต์ไม่แตะเลย
+- ถ้ามีไฟล์ที่ถูกแก้ค้างไว้บน NAS (`git status` ไม่สะอาด) หรือโค้ดแตกสายจาก `origin/main` สคริปต์จะ
+  **หยุดพร้อมบอกเหตุผล ไม่ทับของเดิม** ต้องเข้าไปเก็บกวาดเองก่อน
+- ถ้า build ผ่านแต่เว็บไม่ตอบใน 60 วิ จะ dump `docker logs` 30 บรรทัดล่าสุดลง log แล้ว exit ด้วย code 1
+- เปลี่ยน branch ได้ด้วย env: `BRANCH=dev sh scripts/update.sh`
+
+---
+
 ## ขั้นตอนที่ 7 — ทดสอบ
 
 1. เข้าเว็บ → หน้า **Log & รัน** → กด **"✉️ ทดสอบส่งอีเมล"** เพื่อยืนยันว่าตั้งค่า SMTP ถูกต้อง

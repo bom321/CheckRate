@@ -823,31 +823,53 @@ summary.ov-grid::-webkit-details-marker { display: none; }
 /* wrapper คุมการ scroll แนวนอน — คอลัมน์เยอะตาม rate_targets ของแต่ละธนาคาร ห้ามให้ body เลื่อนแนวนอน */
 .manual-table-wrap {
   overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 6px 4px 10px;
 }
 .manual-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* ไม่มีเส้นคั่นรายแถว — ใช้ระยะห่าง + hover ทั้งแถวแทน (ตารางนี้กว้างได้ถึง ~50 คอลัมน์
+   เส้นทุกแถวเลยกลายเป็นลายพร่าจนอ่านยากกว่าเดิม) */
 .manual-table th, .manual-table td {
-  padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: left;
+  padding: 7px 16px; white-space: nowrap; text-align: left; border: 0;
 }
 .manual-table th {
-  background: #F1EEE8; font-size: 11px; font-weight: 600; color: #4E5157;
+  background: var(--card); font-size: 11px; font-weight: 600; color: var(--muted);
+  padding-bottom: 12px; border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 1;
 }
 .manual-table th.sticky, .manual-table td.sticky {
   position: sticky; left: 0; background: var(--card); z-index: 2;
-  font-weight: 500; font-variant-numeric: tabular-nums;
 }
-.manual-table th.sticky { z-index: 3; background: #F1EEE8; }
-.manual-table td.manual-pdf { text-align: center; }
-.manual-table td.manual-pdf a { color: var(--brand); text-decoration: none; font-weight: 600; }
+.manual-table th.sticky { z-index: 3; }
+.manual-table tbody tr:hover td { background: var(--surface); }
+/* หัวคอลัมน์ = ประกาศหนึ่งฉบับ (วันที่ + ลิงก์เปิด PDF เทียบ) */
+.manual-table .manual-col-date { margin-right: 5px; }
+/* ตารางกว้าง 100% เพื่อให้เต็มการ์ด — ถ้าไม่มีคอลัมน์นี้ดูดช่องว่างที่เหลือไว้ เดือนที่มีประกาศ
+   ฉบับเดียวจะถูกยืดจนหัววันที่ลอยห่างจากช่องกรอกของตัวเอง */
+.manual-table .manual-spacer { width: 100%; padding: 0; }
+.manual-table a.manual-pdf { color: var(--muted-soft); text-decoration: none; }
+.manual-table th:hover a.manual-pdf { color: var(--brand); }
+/* ป้ายชื่ออัตราเป็นแถวแล้ว ยาวกว่าวันที่มาก — ปล่อยให้กว้างได้แต่ไม่เบียดคอลัมน์ค่า */
+.manual-table td.sticky { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+/* ช่องกรอกไร้กรอบจนกว่าจะ hover/focus — 7 แถว × หลายสิบคอลัมน์ ถ้าตีกรอบทุกช่องจะแน่นจนตาลาย */
 .manual-table input {
-  width: 84px; padding: 6px 8px; font-size: 12.5px; font-variant-numeric: tabular-nums;
-  border-radius: 6px; border: 1px solid var(--line-strong);
+  width: 72px; padding: 5px 8px; font-size: 13px; font-variant-numeric: tabular-nums;
+  border-radius: 6px; border: 1px solid transparent; background: transparent;
+  color: var(--ink); transition: border-color .12s, background .12s;
 }
-/* ช่องว่าง = OCR อ่านไม่ได้ — ต้องเด่นกว่าปกติมาก เพราะเป็นเหตุผลหลักที่มาหน้านี้ */
-.manual-table td.cell-empty input { border-color: var(--down); background: var(--down-soft); }
+.manual-table input:hover { border-color: var(--line-strong); }
+.manual-table input:focus {
+  outline: none; border-color: var(--brand); background: var(--card);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+/* ช่องว่าง = OCR อ่านไม่ได้ — ต้องเด่นกว่าปกติมาก เพราะเป็นเหตุผลหลักที่มาหน้านี้
+   (ยิ่งช่องอื่นไร้กรอบ ช่องแดงยิ่งเตะตา) */
+.manual-table td.cell-empty input {
+  border-color: var(--down); background: var(--down-soft); width: 108px;
+}
 .manual-table td.cell-empty input::placeholder { color: var(--down); font-size: 10px; }
-/* ช่องที่กรอกเองอยู่แล้ว — สีต่างจาก cell-empty ชัดเจน กันสับสนว่า "ยังอ่านไม่ได้" กับ "แก้แล้ว" */
-.manual-table td.cell-manual { background: var(--brand-soft); }
+/* ช่องที่กรอกเองอยู่แล้ว — ต่างจาก cell-empty ชัดเจน กันสับสนว่า "ยังอ่านไม่ได้" กับ "แก้แล้ว"
+   ใช้จุดเขียวข้างค่าแทนป้ายเต็มคำ (ป้ายทำให้ความสูงแถวไม่เท่ากันและรกเมื่อมี override หลายช่อง) */
+.manual-table td.cell-manual input { background: var(--brand-soft); color: var(--brand-ink); }
 .manual-table .manual-badge {
-  display: block; font-size: 9.5px; font-weight: 600; color: var(--brand-ink); margin-top: 2px;
+  color: var(--brand); font-size: 11px; margin-left: -4px; cursor: default;
 }
