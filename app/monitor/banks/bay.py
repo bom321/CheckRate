@@ -39,7 +39,8 @@ import pdfplumber
 
 from .. import common
 from ..common import log, THAI_MONTHS
-from ._tablekit import thai_skeleton, kw_in_line, line_equals_kw, row_values
+from ._tablekit import (thai_skeleton, kw_in_line, line_equals_kw, row_values,
+                        amount_to_million, find_joined_row, find_joined_section)
 
 PARSER_IDS = ["bay"]
 
@@ -93,10 +94,8 @@ def _strip_cid(s: str) -> str:
 # ─────────────────────────── Tier (วงเงิน) parsing ───────────────────────────
 _AMOUNT_UNIT_RE = re.compile(r"(\d[\d,]*)\s*(แสน|ล.{0,3}?น)บาท")
 
-
-def _amount_to_million(amount_s: str, unit: str) -> float:
-    n = float(amount_s.replace(",", ""))
-    return n * 0.1 if unit == "แสน" else n
+# _amount_to_million ย้ายไปเป็น _tablekit.amount_to_million (parser อื่นก็ใช้ได้) — คง alias กันแก้ทุกจุด
+_amount_to_million = amount_to_million
 
 
 def _classify_tier(line: str) -> tuple[str, float, float | None, str] | None:
@@ -151,42 +150,31 @@ _SECTION_BOUNDARY_RE = re.compile(r"^[ก-ฮ]\.\s+\S")
 _TIER_MARKER = "ยอดเงินฝาก"
 
 
-def _find_row_line(lines: list[str], section_kw: str, row_kw: str,
-                    amount_m: float | None) -> tuple[str | None, str]:
-    """หาแถวข้อมูล (บรรทัดที่มีค่าตัวเลข 11 คอลัมน์) ที่ตรงกับ section + row keyword ที่กำหนด"""
+def _section_range(lines: list[str], section_kw: str) -> tuple[int | None, int]:
+    """คืน (start, end) ของ section (ขอบเขตหมวดใช้พยัญชนะไทยนำ ไม่ใช่เลขข้อ — ดูคอมเมนต์ด้านบน)"""
     start = None
     for i, s in enumerate(lines):
         if kw_in_line(section_kw, s):
             start = i
             break
     if start is None:
-        return None, ""
-
+        return None, len(lines)
     end = len(lines)
     for i in range(start + 1, len(lines)):
         if _SECTION_BOUNDARY_RE.match(lines[i]):
             end = i
             break
+    return start, end
 
-    row_idx = None
-    for i in range(start + 1, end):
-        if line_equals_kw(row_kw, lines[i]):
-            row_idx = i
-            break
-    if row_idx is None:
-        for i in range(start + 1, end):
-            if kw_in_line(row_kw, lines[i]):
-                row_idx = i
-                break
-    if row_idx is None:
-        return None, ""
 
-    row_line = lines[row_idx]
+def _scan_tiers_and_pick(lines: list[str], tier_start: int, end: int,
+                          row_line: str, amount_m: float | None) -> tuple[str | None, str]:
+    """รับ row_line (บรรทัดเดียวหรือ join 2 บรรทัด) + ช่วงหา tier ลูก → (line, desc)"""
     if row_values(row_line):
         return row_line, "บรรทัดเดียว (ไม่มี tier วงเงิน)"
 
     tiers: list[tuple[str, float, float | None, str]] = []
-    for i in range(row_idx + 1, end):
+    for i in range(tier_start, end):
         s = lines[i]
         if not kw_in_line(_TIER_MARKER, s):
             break
@@ -196,11 +184,53 @@ def _find_row_line(lines: list[str], section_kw: str, row_kw: str,
 
     if not tiers:
         return None, ""
-
     if amount_m is None:
         return tiers[0][3], "ไม่ระบุวงเงิน (ใช้ tier แรกที่พบ)"
-
     return _pick_tier(tiers, amount_m)
+
+
+def _find_row_line(lines: list[str], section_kw: str, row_kw: str,
+                    amount_m: float | None) -> tuple[str | None, str]:
+    """หาแถวข้อมูล (บรรทัดที่มีค่าตัวเลข 11 คอลัมน์) ที่ตรงกับ section + row keyword ที่กำหนด
+
+    two-pass: pass 1 รายบรรทัด (พฤติกรรมเดิม); pass 2 (เมื่อ pass 1 ล้มเหลวทั้งกระบวน) จับหัวข้อ/
+    section ที่ pdfplumber ตัดเป็น 2 บรรทัด — เข้า pass 2 เฉพาะตอน pass 1 ไม่ได้ผล กัน false positive"""
+    # ── pass 1: รายบรรทัด ──
+    start, end = _section_range(lines, section_kw)
+    if start is not None:
+        row_idx = None
+        for i in range(start + 1, end):
+            if line_equals_kw(row_kw, lines[i]):
+                row_idx = i
+                break
+        if row_idx is None:
+            for i in range(start + 1, end):
+                if kw_in_line(row_kw, lines[i]):
+                    row_idx = i
+                    break
+        if row_idx is not None:
+            line, desc = _scan_tiers_and_pick(lines, row_idx + 1, end, lines[row_idx], amount_m)
+            if line is not None:
+                return line, desc
+
+    # ── pass 2: หัวข้อ/section ถูกตัด 2 บรรทัด ──
+    if start is not None:
+        sec_start, sec_end = start + 1, end
+    else:
+        js = find_joined_section(lines, section_kw)
+        if js is None:
+            return None, ""
+        sec_start = js + 1
+        sec_end = len(lines)
+        for i in range(sec_start, len(lines)):
+            if _SECTION_BOUNDARY_RE.match(lines[i]):
+                sec_end = i
+                break
+
+    row_line, tier_start = find_joined_row(lines, sec_start, sec_end, row_kw)
+    if row_line is None:
+        return None, ""
+    return _scan_tiers_and_pick(lines, tier_start, sec_end, row_line, amount_m)
 
 
 def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:

@@ -164,7 +164,10 @@ async def login_required_handler(request: Request, exc: LoginRequired) -> Redire
 
 def auth_context(request: Request) -> dict:
     """ส่งเข้าทุก template ผ่าน Jinja2Templates(context_processors=...) — ใช้ซ่อน nav/ปุ่มที่ต้อง admin"""
-    return {"is_admin": is_admin(request), "admin_email": request.session.get("admin_email")}
+    admin = is_admin(request)
+    # นับคำขอใหม่เฉพาะตอนเป็น admin (badge บนเมนู) — ไม่งั้นทุกหน้า public จะอ่านไฟล์เปล่า ๆ
+    return {"is_admin": admin, "admin_email": request.session.get("admin_email"),
+            "new_request_count": da.count_new_requests() if admin else 0}
 
 
 # ─────────────────────────── Routes ───────────────────────────

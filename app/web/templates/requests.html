@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}คำขอจากผู้ใช้ — CheckRate{% endblock %}
+{% block content %}
+
+{# ป้ายชื่อประเภท/สถานะ — คีย์ตรงกับที่ data_access เก็บ (update/wrong/newbank · new/done/closed) #}
+{% set type_label = {"update": "ขออัปเดต", "wrong": "แจ้งค่าผิด", "newbank": "ธนาคารใหม่"} %}
+{% set status_label = {"new": "ใหม่", "done": "ทำแล้ว", "closed": "ปิดงาน"} %}
+
+<div class="req-head">
+  <h1>
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+    คำขอจากผู้ใช้
+  </h1>
+  <p class="page-desc">รายการแจ้งอัปเดตอัตรา รายงานค่าผิด และข้อเสนอธนาคารใหม่จากผู้ใช้ทั่วไป</p>
+</div>
+
+<div class="req-filters">
+  {% for key, label in filters %}
+  <a href="/requests?status={{ key }}" class="req-filter {{ 'on' if key == filter }}">
+    {{ label }}<span class="req-filter-n">{{ counts[key] }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if not requests %}
+<div class="req-empty">
+  <div class="req-empty-ic">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+  </div>
+  <div class="req-empty-title">ยังไม่มีคำขอในสถานะนี้</div>
+  <div class="req-empty-sub">เมื่อมีผู้ใช้แจ้งเข้ามา รายการจะปรากฏที่นี่</div>
+</div>
+{% else %}
+<div class="req-list">
+  {% for r in requests %}
+  <div class="req-card" data-id="{{ r.id }}">
+    <div class="req-card-main">
+      <div class="req-card-top">
+        <span class="req-badge type-{{ r.type }}">
+          {% if r.type == 'update' %}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v4h-4"/></svg>
+          {% elif r.type == 'wrong' %}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          {% else %}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+          {% endif %}
+          {{ type_label[r.type] }}
+        </span>
+        {% if r.type in ('update', 'wrong') %}
+        <a class="req-bank-link" href="/bank/{{ r.bank_code }}">{{ r.bank_display }}</a>
+        {% else %}
+        <span class="req-bank">{{ r.bank_display }}</span>
+        {% endif %}
+        {% if r.link %}
+        <a class="req-ref" href="{{ r.link }}" target="_blank" rel="noopener noreferrer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>ลิงก์อ้างอิง
+        </a>
+        {% endif %}
+      </div>
+      {% if r.detail %}<div class="req-detail">{{ r.detail }}</div>{% endif %}
+      <div class="req-meta">
+        <span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+          {{ r.email }}
+        </span>
+        <span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          {{ r.created_at|thai_datetime }}
+        </span>
+      </div>
+    </div>
+
+    <div class="req-card-side">
+      <span class="req-status st-{{ r.status }}">{{ status_label[r.status] }}</span>
+      <div class="req-actions">
+        {% if r.status == 'new' %}
+        <button class="btn primary small" data-status="done">ทำแล้ว</button>
+        <button class="btn small" data-status="closed">ปิดงาน (ไม่ดำเนินการ)</button>
+        {% elif r.status == 'done' %}
+        <button class="btn small" data-status="closed">ปิดงาน (ไม่ดำเนินการ)</button>
+        {% else %}
+        <button class="btn small" data-status="new">เปิดใหม่</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/requests_admin.js"></script>
+{% endblock %}

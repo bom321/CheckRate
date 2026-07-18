@@ -31,6 +31,7 @@ from ..common import log
 from ._tablekit import (
     thai_skeleton, kw_in_line, line_equals_kw, row_values,
     pick_amount_tier, parse_tier_type_and_amount,
+    find_joined_row, find_joined_section,
 )
 
 PARSER_IDS = ["scb_passbook"]
@@ -81,42 +82,31 @@ def resolve_depositor(value) -> int | None:
 _TOP_LEVEL_RE = re.compile(r"^\d+\.\s+\S")
 
 
-def _find_row_line(lines: list[str], section_kw: str, row_kw: str,
-                    amount_m: float | None) -> tuple[str | None, str]:
-    """หาแถวข้อมูล (บรรทัดที่มีค่าตัวเลข 13 คอลัมน์) ที่ตรงกับ section + row keyword ที่กำหนด"""
+def _section_range(lines: list[str], section_kw: str) -> tuple[int | None, int]:
+    """คืน (start, end) ของ section (start = บรรทัดหัวข้อ, end = boundary ถัดไป) หรือ (None, len)"""
     start = None
     for i, s in enumerate(lines):
         if kw_in_line(section_kw, s):
             start = i
             break
     if start is None:
-        return None, ""
-
+        return None, len(lines)
     end = len(lines)
     for i in range(start + 1, len(lines)):
         if _TOP_LEVEL_RE.match(lines[i]):
             end = i
             break
+    return start, end
 
-    row_idx = None
-    for i in range(start + 1, end):
-        if line_equals_kw(row_kw, lines[i]):
-            row_idx = i
-            break
-    if row_idx is None:
-        for i in range(start + 1, end):
-            if kw_in_line(row_kw, lines[i]):
-                row_idx = i
-                break
-    if row_idx is None:
-        return None, ""
 
-    row_line = lines[row_idx]
+def _scan_tiers_and_pick(lines: list[str], tier_start: int, end: int,
+                          row_line: str, amount_m: float | None) -> tuple[str | None, str]:
+    """รับ row_line (หัวข้อที่พบแล้ว อาจเป็นบรรทัดเดียวหรือ join 2 บรรทัด) + ช่วงหา tier ลูก → (line, desc)"""
     if row_values(row_line):
         return row_line, "บรรทัดเดียว (ไม่มี tier วงเงิน)"
 
     tiers: list[tuple[str, int, str]] = []
-    for i in range(row_idx + 1, end):
+    for i in range(tier_start, end):
         s = lines[i]
         if not kw_in_line("วงเงิน", s):
             break
@@ -126,11 +116,54 @@ def _find_row_line(lines: list[str], section_kw: str, row_kw: str,
 
     if not tiers:
         return None, ""
-
     if amount_m is None:
         return tiers[0][2], "ไม่ระบุวงเงิน (ใช้ tier แรกที่พบ)"
-
     return pick_amount_tier(tiers, amount_m)
+
+
+def _find_row_line(lines: list[str], section_kw: str, row_kw: str,
+                    amount_m: float | None) -> tuple[str | None, str]:
+    """หาแถวข้อมูล (บรรทัดที่มีค่าตัวเลข 13 คอลัมน์) ที่ตรงกับ section + row keyword ที่กำหนด
+
+    two-pass: pass 1 = จับรายบรรทัด (พฤติกรรมเดิมทุกตัวอักษร); pass 2 (เรียกเมื่อ pass 1 ล้มเหลว
+    ทั้งกระบวน — หา section/row ไม่เจอ หรือเจอแต่ดึงค่าไม่ได้) = จับหัวข้อ/section ที่ pdfplumber
+    ตัดเป็น 2 บรรทัด ด้วย find_joined_* — กัน false positive เพราะเข้า pass 2 เฉพาะตอน pass 1 ไม่ได้ผล"""
+    # ── pass 1: รายบรรทัด ──
+    start, end = _section_range(lines, section_kw)
+    if start is not None:
+        row_idx = None
+        for i in range(start + 1, end):
+            if line_equals_kw(row_kw, lines[i]):
+                row_idx = i
+                break
+        if row_idx is None:
+            for i in range(start + 1, end):
+                if kw_in_line(row_kw, lines[i]):
+                    row_idx = i
+                    break
+        if row_idx is not None:
+            line, desc = _scan_tiers_and_pick(lines, row_idx + 1, end, lines[row_idx], amount_m)
+            if line is not None:
+                return line, desc
+
+    # ── pass 2: หัวข้อ/section ถูกตัด 2 บรรทัด ──
+    if start is not None:
+        sec_start, sec_end = start + 1, end
+    else:
+        js = find_joined_section(lines, section_kw)
+        if js is None:
+            return None, ""
+        sec_start = js + 1
+        sec_end = len(lines)
+        for i in range(sec_start, len(lines)):
+            if _TOP_LEVEL_RE.match(lines[i]):
+                sec_end = i
+                break
+
+    row_line, tier_start = find_joined_row(lines, sec_start, sec_end, row_kw)
+    if row_line is None:
+        return None, ""
+    return _scan_tiers_and_pick(lines, tier_start, sec_end, row_line, amount_m)
 
 
 def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:

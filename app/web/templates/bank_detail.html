@@ -6,6 +6,49 @@
   <a href="/?month={{ month }}">ภาพรวม</a><span>›</span><span>รายละเอียดธนาคาร</span><span>›</span><span class="now">{{ bank.name|replace('ธนาคาร', '') }}</span>
 </div>
 
+<!-- กล่องแจ้งอัตรา (สาธารณะ) — ดีไซน์จาก claude design -->
+<dialog id="report-dialog" class="req-modal">
+  <div class="req-modal-head">
+    <div>
+      <div class="req-modal-title">แจ้งอัตราดอกเบี้ย</div>
+      <div class="req-modal-bank">{{ bank.name|replace('ธนาคาร', '') }}</div>
+    </div>
+    <button type="button" class="req-modal-x" data-req-close aria-label="ปิด">✕</button>
+  </div>
+
+  <form class="req-form" data-req-type="rate" data-bank-code="{{ bank.code }}">
+    <div class="req-field">
+      <div class="req-field-label">เลือกประเภท</div>
+      <div class="req-choices">
+        <label class="req-choice"><input type="radio" name="reqtype" value="update" checked><span>ขอให้อัปเดตอัตราล่าสุด</span></label>
+        <label class="req-choice"><input type="radio" name="reqtype" value="wrong"><span>อัตราที่แสดงไม่ถูกต้อง</span></label>
+      </div>
+    </div>
+    <label class="req-field">
+      <span class="req-field-label">รายละเอียดเพิ่มเติม <span class="req-opt">(ไม่บังคับ)</span></span>
+      <textarea name="detail" rows="3" maxlength="1000" placeholder="เช่น ระยะ 12 เดือนควรเป็น 1.55%"></textarea>
+    </label>
+    <label class="req-field">
+      <span class="req-field-label">อีเมลของคุณ <span class="req-req">*</span></span>
+      <input type="email" name="email" required placeholder="you@email.com">
+      <span class="req-hint">เผื่อผู้ดูแลติดต่อกลับ ไม่เผยแพร่ต่อ</span>
+    </label>
+    <input type="text" name="website" tabindex="-1" autocomplete="off" class="req-hp" aria-hidden="true">
+    <div class="req-error" hidden>ส่งคำขอไม่สำเร็จ กรุณาลองใหม่อีกครั้ง</div>
+    <div class="req-form-actions">
+      <button type="button" class="btn" data-req-close>ยกเลิก</button>
+      <button type="submit" class="btn primary req-submit">ส่งคำขอ</button>
+    </div>
+  </form>
+
+  <div class="req-success" hidden>
+    <div class="req-success-ic">✓</div>
+    <div class="req-success-title">ส่งคำขอแล้ว ขอบคุณครับ</div>
+    <div class="req-success-sub">ทีมงานจะตรวจสอบและอัปเดตข้อมูลโดยเร็วที่สุด</div>
+    <button type="button" class="btn primary" data-req-close>ปิดหน้าต่าง</button>
+  </div>
+</dialog>
+
 {% if is_admin %}
 <!-- แอ็กชันของธนาคารนี้ (id เดิม — run.js ผูกไว้อยู่) เฉพาะผู้ดูแลที่ login แล้วเท่านั้น -->
 <div class="toolbar">
@@ -15,6 +58,7 @@
   <button id="discover-year-bank" class="btn btn-icon" data-code="{{ bank.code }}" aria-label="ค้นหาประวัติทั้งปีอย่างละเอียด" title="สแกนหาประกาศทั้งปีแบบละเอียด (ใช้เวลานาน) เผื่อมีไฟล์ที่การตรวจสอบปกติพลาดไป — กดเป็นครั้งคราวพอ">🔍 <span class="btn-txt">ค้นหาประวัติทั้งปีอย่างละเอียด</span></button>
   {% endif %}
   <a href="/bank/{{ bank.code }}/manual?month={{ month }}" class="btn btn-icon" aria-label="กรอก/แก้ค่าเอง" title="แก้ค่าที่ระบบอ่านจาก PDF ไม่ได้หรืออ่านผิด — ใช้ได้แม้ไม่มีแถบเตือนแดง (เช่น OCR อ่านผิดเป็นตัวเลขที่ดูปกติ)">✎ <span class="btn-txt">กรอก/แก้ค่าเอง</span></a>
+  <button id="upload-pdf" type="button" class="btn btn-icon" data-code="{{ bank.code }}" aria-label="อัปโหลดประกาศ" title="อัปโหลดไฟล์ PDF ประกาศเอง เมื่อระบบดาวน์โหลดจากเว็บธนาคารไม่ได้ (เว็บบล็อก/URL เปลี่ยน) หรือมีไฟล์ย้อนหลังที่ยังไม่มีในระบบ — ระบบจะอ่านวันที่จากไฟล์แล้วเติมข้อมูลให้">⬆ <span class="btn-txt">อัปโหลดประกาศ</span></button>
   {# ค่าเริ่มต้นเป็น "ทั้งหมด" ตั้งใจ: backfill จะได้ใช้ cache (ไม่บังคับอ่านซ้ำ) ส่วน discover-year
      ที่ไม่ได้ส่งปีไป ฝั่ง monitor จะ default เป็นปีปัจจุบันให้เองอยู่แล้ว — แสดงเสมอไม่ผูกกับ
      supports_discover_year เพราะปุ่มเติมข้อมูลย้อนหลังใช้ปีนี้ด้วยและมีทุกธนาคาร #}
@@ -30,6 +74,26 @@
 </div>
 {# ไม่มี #run-output ในหน้านี้ตั้งใจ — run.js จะข้ามการโชว์ log ให้เอง เหลือแค่สรุปผลใน #run-notice #}
 <div id="run-notice"></div>
+
+<!-- กล่องอัปโหลดประกาศเอง (admin) — เปิดจากปุ่ม ⬆ ในทูลบาร์ -->
+<dialog id="upload-dialog" class="upload-dialog">
+  <form method="dialog">
+    <h3>อัปโหลดประกาศอัตราดอกเบี้ย — {{ bank.name }}</h3>
+    <p class="upload-hint">ใช้เมื่อระบบดาวน์โหลดไฟล์จากเว็บธนาคารอัตโนมัติไม่ได้ หรือมีไฟล์ประกาศย้อนหลังที่ยังไม่มีในระบบ
+      — ระบบจะอ่าน "วันที่มีผล" จากเนื้อไฟล์แล้วเติมข้อมูลย้อนหลังให้เอง</p>
+    <label class="upload-field">ไฟล์ PDF ประกาศ
+      <input type="file" id="upload-file" accept="application/pdf" required>
+    </label>
+    <label class="upload-field">วันที่มีผล <span class="upload-opt">(เว้นว่าง = ให้ระบบอ่านจากไฟล์)</span>
+      <input type="date" id="upload-date">
+    </label>
+    <div class="upload-actions">
+      <button type="button" id="upload-cancel" class="btn">ยกเลิก</button>
+      <button type="button" id="upload-submit" class="btn primary">อัปโหลด</button>
+    </div>
+    <div id="upload-msg" class="upload-msg" role="status"></div>
+  </form>
+</dialog>
 {% endif %}
 
 <!-- ประโยคสรุปเดือนนี้ — โชว์เฉพาะมือถือ (desktop มี KPI การ์ดอยู่แล้ว) -->
@@ -78,6 +142,16 @@
       <div class="ov-kpi-label">เปลี่ยนแปลงเดือนนี้</div>
     </div>
   </div>
+</div>
+
+{# ปุ่มสาธารณะ — ทุกคนเห็น (ไม่ผูก is_admin) ให้คนทั่วไปแจ้ง admin ได้ · วางเป็นบรรทัดชวนใต้ KPI ชิดขวา (8d) #}
+<div class="bd-report">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+  <span class="bd-report-prompt">ข้อมูลไม่ตรง หรืออยากให้ตรวจอีกครั้ง?</span>
+  <button id="report-rate" type="button" class="btn req-link"
+          data-bank-code="{{ bank.code }}" data-bank-name="{{ bank.name|replace('ธนาคาร', '') }}">
+    แจ้ง/ขอให้อัปเดต
+  </button>
 </div>
 
 {% if has_data %}
@@ -256,9 +330,66 @@
 {% endblock %}
 
 {% block scripts %}
-{% if is_admin %}<script src="/static/js/run.js"></script>{% endif %}
+{% if is_admin %}<script src="/static/js/run.js"></script>
+<script>
+// อัปโหลดประกาศเอง (admin) — ยิง multipart ไป /api/upload/{code} แล้วให้ run.js ติดตามงาน backfill ที่ server สั่งต่อ
+(function () {
+  const dlg = document.getElementById('upload-dialog');
+  const openBtn = document.getElementById('upload-pdf');
+  if (!dlg || !openBtn) return;
+  const code = openBtn.dataset.code;
+  const fileEl = document.getElementById('upload-file');
+  const dateEl = document.getElementById('upload-date');
+  const msgEl = document.getElementById('upload-msg');
+  const submitBtn = document.getElementById('upload-submit');
+
+  openBtn.addEventListener('click', () => { msgEl.textContent = ''; msgEl.className = 'upload-msg'; dlg.showModal(); });
+  document.getElementById('upload-cancel').addEventListener('click', () => dlg.close());
+
+  async function send(overwrite) {
+    if (!fileEl.files.length) { msgEl.textContent = 'กรุณาเลือกไฟล์ PDF ก่อน'; msgEl.className = 'upload-msg err'; return; }
+    const fd = new FormData();
+    fd.append('file', fileEl.files[0]);
+    if (dateEl.value) fd.append('date', dateEl.value);
+    if (overwrite) fd.append('overwrite', '1');
+    submitBtn.disabled = true;
+    msgEl.textContent = 'กำลังอัปโหลดและอ่านไฟล์...'; msgEl.className = 'upload-msg';
+    let data;
+    try {
+      const res = await fetch('/api/upload/' + code, { method: 'POST', body: fd });
+      data = await res.json();
+      if (!res.ok) {
+        msgEl.textContent = 'ผิดพลาด: ' + (data.detail || res.status);
+        msgEl.className = 'upload-msg err'; submitBtn.disabled = false; return;
+      }
+    } catch (e) {
+      msgEl.textContent = 'อัปโหลดไม่สำเร็จ (เชื่อมต่อไม่ได้)';
+      msgEl.className = 'upload-msg err'; submitBtn.disabled = false; return;
+    }
+
+    if (data.exists) {
+      submitBtn.disabled = false;
+      if (confirm(data.message + '\n(จะเขียนทับไฟล์ประกาศวันเดิม)')) return send(true);
+      msgEl.textContent = 'ยกเลิกการเขียนทับ'; msgEl.className = 'upload-msg';
+      return;
+    }
+
+    dlg.close();
+    fileEl.value = ''; dateEl.value = ''; submitBtn.disabled = false;
+    if (window.CheckRateRun) {
+      if (data.backfill_started) {
+        window.CheckRateRun.trackExternalJob('⏳ อัปโหลดแล้ว (วันที่ ' + data.date + ') — กำลังเติมข้อมูล...');
+      } else {
+        window.CheckRateRun.setStatus('idle', 'บันทึกไฟล์วันที่ ' + data.date + ' แล้ว — มีงานอื่นค้างอยู่ กด "เติมข้อมูลย้อนหลัง" อีกครั้งภายหลัง');
+      }
+    }
+  }
+  submitBtn.addEventListener('click', () => send(false));
+})();
+</script>{% endif %}
 <script id="chart-data" type="application/json">
 {"labels": {{ chart_labels|tojson }}, "dates": {{ chart_dates|tojson }}, "datasets": {{ chart_datasets|tojson }}}
 </script>
 <script src="/static/js/detail.js"></script>
+<script src="/static/js/request.js"></script>
 {% endblock %}

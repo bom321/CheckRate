@@ -88,8 +88,63 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 .btn.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
 .btn.primary:hover { background: var(--brand-ink); }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
-.btn.small { padding: 6px 11px; font-size: 13px; }
-.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+.btn.small {
+  padding: 6px 11px;
+  font-size: 13px;
+}
+
+/* ปุ่มคำขอสาธารณะ — คนละสไตล์ต่อหน้า (ตาม claude design redesign 2a / 8d)
+   ทั้งคู่เป็นปุ่ม "รอง" ไม่ชนกับปุ่ม primary สีเขียวทึบของแอดมิน */
+
+/* เสนอธนาคารใหม่ (หน้าภาพรวม) — ลิงก์ข้อความ + ไอคอน + ขีดเส้นใต้ (2a)
+   วางแทรกข้าง ๆ ปุ่มเขียว "รันตรวจสอบ" ในส่วนหัว */
+.btn.req-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.btn.req-add span { text-decoration: underline; text-underline-offset: 3px; }
+
+.btn.req-add:hover {
+  background: none;
+  color: var(--brand);
+}
+
+/* แจ้ง/ขอให้อัปเดต (หน้ารายละเอียดธนาคาร) — ลิงก์ข้อความขีดเส้นใต้ (8d) */
+.btn.req-link {
+  border: none;
+  background: none;
+  color: var(--brand-ink);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.btn.req-link:hover {
+  background: none;
+  color: var(--brand);
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
 .toolbar .f-sel { flex: none; }
 
 a.link { color: var(--brand); text-decoration: none; font-weight: 600; }
@@ -323,8 +378,9 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 /* hero */
 .ov-hero {
   display: flex; align-items: flex-end; justify-content: space-between;
-  gap: 28px; flex-wrap: wrap; margin-bottom: 28px;
+  gap: 28px; flex-wrap: wrap; margin-bottom: 16px;
 }
+.ov-hero-lead { flex: 1 1 auto; min-width: 0; }
 /* เดือนที่กำลังดูอยู่ — เป็นบริบทของทั้งหน้า ต้องอ่านออกก่อนตัวเลขอื่น จึงแยกออกจาก .ov-hero-meta */
 .ov-hero-month {
   display: inline-block; margin-bottom: 10px; padding: 4px 12px; border-radius: 20px;
@@ -338,8 +394,9 @@ input:focus, textarea:focus, select:focus { outline: 2px solid #BEE3CE; border-c
 }
 .ov-hero h1 b { font-weight: 600; }
 .ov-hero h1 b.accent { color: var(--brand); }
-.ov-hero-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
-.ov-hero-actions .btn.primary { display: inline-flex; align-items: center; gap: 7px; }
+/* แถวปุ่มใต้ hero — ชิดการ์ดธนาคาร (margin-bottom น้อย ๆ) */
+.ov-hero-actions { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; flex-wrap: wrap; }
+.ov-hero-actions .btn { display: inline-flex; align-items: center; gap: 7px; }
 .btn-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: #8FE3B5; }
 
 .ov-kpis { display: flex; gap: 30px; padding-bottom: 6px; flex-wrap: wrap; }
@@ -872,4 +929,191 @@ summary.ov-grid::-webkit-details-marker { display: none; }
 .manual-table td.cell-manual input { background: var(--brand-soft); color: var(--brand-ink); }
 .manual-table .manual-badge {
   color: var(--brand); font-size: 11px; margin-left: -4px; cursor: default;
+}
+
+/* ─────────────── กล่องอัปโหลดประกาศเอง (dialog บนหน้า /bank) ─────────────── */
+.upload-dialog {
+  border: 1px solid var(--line-strong); border-radius: 10px; padding: 20px 22px;
+  max-width: 460px; width: calc(100% - 32px); background: var(--card); color: var(--ink);
+  box-shadow: 0 12px 40px rgba(0,0,0,.22);
+}
+.upload-dialog::backdrop { background: rgba(0,0,0,.38); }
+.upload-dialog h3 { margin: 0 0 6px; font-size: 16px; }
+.upload-hint { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.upload-field { display: block; margin-bottom: 12px; font-size: 13px; font-weight: 600; }
+.upload-field input { display: block; margin-top: 5px; width: 100%; font: inherit;
+  padding: 7px 8px; border: 1px solid var(--line-strong); border-radius: 6px;
+  background: var(--bg); color: var(--ink); }
+.upload-field .upload-opt { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+.upload-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.upload-msg { margin-top: 10px; font-size: 12.5px; min-height: 1.2em; color: var(--muted); }
+.upload-msg.err { color: var(--down); }
+
+/* ─────────────── กล่องช่วยเหลือแบบพับได้บนหน้า /config ─────────────── */
+.cfg-help { margin: 10px 0 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.cfg-help > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: 13px; color: var(--brand); }
+.cfg-help[open] > summary { border-bottom: 1px solid var(--line); }
+.cfg-help-body { padding: 12px 16px; font-size: 12.5px; color: var(--ink); line-height: 1.6; }
+.cfg-help-body p { margin: 0 0 10px; }
+.cfg-help-body code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.cfg-help-tbl { width: 100%; border-collapse: collapse; margin: 4px 0 12px; font-size: 12px; }
+.cfg-help-tbl th, .cfg-help-tbl td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+.cfg-help-tbl th { background: var(--bg); font-weight: 600; }
+.cfg-help-eg { padding-left: 2px; }
+.cfg-help-more { color: var(--muted); margin-top: 4px; }
+
+
+/* ═══════════════ คำขอจากผู้ใช้ (public request + หน้า admin) — ดีไซน์จาก claude design ═══════════════ */
+
+/* badge จำนวนคำขอใหม่บนเมนู */
+.nav-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 6px; min-width: 16px;
+  border-radius: 9px; background: var(--down); color: #fff;
+  font: 600 10.5px/1.5 var(--sans); text-align: center; vertical-align: middle;
+}
+
+/* ── ปุ่มเปิดกล่องคำขอ ── */
+/* บรรทัดชวน "แจ้ง/ขอให้อัปเดต" ใต้ KPI ของ hero — ชิดขวา (8d)
+   กระดิ่ง + ข้อความเทา + ลิงก์เขียวขีดเส้นใต้ (.btn.req-link) */
+.bd-report {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: -8px 0 24px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.bd-report svg { flex: none; color: var(--muted-soft); }
+.bd-report .req-link { margin-left: 2px; }
+
+/* ── กล่อง (native <dialog>) ── */
+dialog.req-modal {
+  width: 460px; max-width: calc(100vw - 32px); max-height: 88vh; padding: 0;
+  border: none; border-radius: 16px; background: var(--surface); color: var(--ink);
+  box-shadow: 0 24px 60px rgba(23, 24, 28, .18);
+}
+dialog.req-modal::backdrop { background: rgba(23, 24, 28, .44); }
+
+.req-modal-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; padding: 24px 26px 8px;
+}
+.req-modal-title { font-weight: 300; font-size: 20px; line-height: 1.3; }
+.req-modal-bank { font-weight: 500; font-size: 14px; color: var(--brand); margin-top: 2px; }
+.req-modal-x {
+  border: none; background: transparent; color: var(--muted); font-size: 20px;
+  line-height: 1; cursor: pointer; padding: 6px; margin: -6px -6px 0 0;
+}
+.req-modal-x:hover { color: var(--ink); }
+
+/* ── ฟอร์ม ── */
+.req-form { padding: 14px 26px 26px; display: flex; flex-direction: column; gap: 18px; }
+.req-field { display: flex; flex-direction: column; gap: 6px; }
+.req-field-label { font-weight: 500; font-size: 13.5px; color: var(--ink); }
+.req-opt { color: var(--muted); font-weight: 400; }
+.req-req { color: var(--down); }
+.req-hint { font-size: 12px; color: var(--muted); }
+.req-form textarea { resize: vertical; }
+.req-form .req-mono { font-family: var(--mono); }
+
+/* radio แบบการ์ด — ใช้ :has() เลือกไฮไลต์ตัวที่ติ๊ก */
+.req-choices { display: flex; flex-direction: column; gap: 10px; }
+.req-choice {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  font-size: 14px; line-height: 1.45;
+}
+.req-choice input { margin-top: 3px; accent-color: var(--brand); }
+.req-choice:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+
+/* honeypot — คนไม่เห็น บอตกรอก */
+.req-hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+
+.req-error {
+  background: var(--down-soft); color: var(--down); border-radius: 8px;
+  padding: 10px 12px; font-size: 13px; line-height: 1.5;
+}
+.req-form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+
+/* ── หน้าจอสำเร็จ ── */
+.req-success { padding: 36px 26px 40px; text-align: center; }
+.req-success-ic {
+  width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 50%;
+  background: var(--brand-soft); color: var(--brand);
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
+}
+.req-success-title { font-weight: 500; font-size: 16px; color: var(--brand-ink); margin-bottom: 6px; }
+.req-success-sub { font-size: 13.5px; color: var(--muted); margin-bottom: 22px; }
+
+/* ── หน้า admin /requests ── */
+.req-head { margin-bottom: 24px; }
+.req-head h1 { display: flex; align-items: center; gap: 12px; font-weight: 300; font-size: 26px; }
+.req-head .page-desc { margin: 4px 0 0; }
+
+.req-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.req-filter {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px;
+  border: 1px solid var(--line); border-radius: 20px; background: var(--card);
+  color: var(--ink); text-decoration: none; font-size: 13.5px; font-weight: 500;
+}
+.req-filter:hover { background: var(--bg); }
+.req-filter.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); }
+.req-filter-n { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.req-filter.on .req-filter-n { color: var(--brand); }
+
+.req-empty {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+  padding: 70px 20px; text-align: center;
+}
+.req-empty-ic {
+  width: 68px; height: 68px; margin: 0 auto 18px; border-radius: 50%;
+  background: var(--brand-soft); display: flex; align-items: center; justify-content: center;
+}
+.req-empty-title { font-weight: 500; font-size: 16px; margin-bottom: 6px; }
+.req-empty-sub { font-size: 13.5px; color: var(--muted); }
+
+.req-list { display: flex; flex-direction: column; gap: 12px; }
+.req-card {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; justify-content: space-between;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+}
+.req-card-main { display: flex; flex-direction: column; gap: 8px; min-width: 280px; flex: 1; }
+.req-card-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.req-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px 3px 9px;
+  border-radius: 20px; font-weight: 600; font-size: 11.5px;
+}
+.req-badge.type-update  { background: var(--brand-soft); color: var(--brand-ink); }
+.req-badge.type-wrong   { background: var(--down-soft);  color: var(--down); }
+.req-badge.type-newbank { background: #F1F0EC;           color: #5A5D64; }
+
+.req-bank, .req-bank-link { font-weight: 500; font-size: 14.5px; color: var(--ink); text-decoration: none; }
+.req-bank-link:hover { color: var(--brand); }
+.req-ref {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-weight: 500; font-size: 12.5px; color: var(--brand); text-decoration: none;
+}
+.req-detail { font-size: 13.5px; line-height: 1.55; color: #4A4C52; }
+.req-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.req-meta span { display: inline-flex; align-items: center; gap: 5px; }
+
+.req-card-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; flex-shrink: 0; }
+.req-status { padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+.req-status.st-new    { background: var(--warn-soft);  color: var(--warn); }
+.req-status.st-done   { background: var(--brand-soft); color: var(--brand-ink); }
+.req-status.st-closed { background: #F1F0EC;           color: var(--muted); }
+.req-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.req-actions .btn { white-space: nowrap; }
+
+/* มือถือ: modal เป็น bottom sheet · การ์ดคำขอเรียงลงเต็มความกว้าง */
+@media (max-width: 640px) {
+  dialog.req-modal {
+    width: 100%; max-width: 100%; margin: 0 0 0 0; align-self: flex-end;
+    border-radius: 16px 16px 0 0; max-height: 92vh;
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+  }
+  .req-card-side { align-items: stretch; width: 100%; }
+  .req-actions { justify-content: flex-start; }
 }

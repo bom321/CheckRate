@@ -39,6 +39,34 @@
   </div>
 </div>
 
+<details class="cfg-help">
+  <summary>วิธีตั้งค่าอัตรา + ตัวอย่าง (กดเพื่อดู)</summary>
+  <div class="cfg-help-body">
+    <p><b>1 อัตรา (target) = 1 เส้นกราฟ + 2 คอลัมน์ใน CSV</b> (ค่าอัตรา + ส่วนต่าง) · ลำดับ target = ลำดับคอลัมน์
+      · เพิ่มอัตราใหม่ไม่ต้องแก้อะไรฝั่งเว็บ · <b>ทุก target ต้องมี "ระยะ (เดือน)" หรือ "ผลิตภัณฑ์ (row_keyword)" อย่างน้อยหนึ่งอย่าง</b></p>
+
+    <p><b>หน่วยวงเงิน = ล้านบาท</b> — วงเงินหน่วยแสนใช้ทศนิยม: 5 แสน = <code>0.5</code>, 3 แสน = <code>0.3</code>, 1 ล้าน = <code>1</code></p>
+
+    <table class="cfg-help-tbl">
+      <thead><tr><th>ธนาคาร</th><th>แถวประจำ (ค่าเริ่มต้นเมื่อใส่ระยะ)</th><th>ประเภทบัญชี (section)</th><th>คอลัมน์ผู้รับ</th></tr></thead>
+      <tbody>
+        <tr><td>SCB</td><td>{N} เดือน</td><td>บังคับ (เริ่มต้น "เงินฝากประจำ แบบมีสมุด")</td><td>1–13</td></tr>
+        <tr><td>KTB</td><td>ประจำ {N} เดือน</td><td>ไม่บังคับ</td><td>1–10</td></tr>
+        <tr><td>KBANK</td><td>เงินฝากประจำ {N} เดือน</td><td>ไม่ใช้</td><td>บุคคลธรรมดา/ราชการ/สถาบันการเงิน/กองทุน</td></tr>
+        <tr><td>BAY</td><td>ระยะเวลาการฝาก {N} เดือน</td><td>บังคับ (เริ่มต้น "บัญชีเงินฝากประจำ")</td><td>1–11</td></tr>
+        <tr><td>BBL</td><td>ระยะเวลาการฝาก {N} เดือน (ในหมวด "ประจำ")</td><td>ไม่บังคับ (เริ่มต้น "ประจำ")</td><td>1–9</td></tr>
+      </tbody>
+    </table>
+
+    <p class="cfg-help-eg"><b>ประจำมาตรฐาน:</b> ระยะ = <code>12</code>, วงเงิน = <code>1</code></p>
+    <p class="cfg-help-eg"><b>ออมทรัพย์ (ไม่มีระยะ):</b> ระยะเว้นว่าง, ผลิตภัณฑ์ = <code>ออมทรัพย์</code> (BBL ใช้ <code>สะสมทรัพย์</code>)</p>
+    <p class="cfg-help-eg"><b>หัวข้อ 2 บรรทัด/ไม่มีระยะ — MAKE by KBank:</b> ระยะเว้นว่าง, วงเงิน = <code>0.3</code>,
+      ผลิตภัณฑ์ = <code>ผ่านบริการ MAKE by KBank</code> (ใช้คำเฉพาะบรรทัดสองที่ไม่ซ้ำใคร ชัวร์กว่าใส่ชื่อเต็ม)</p>
+
+    <p class="cfg-help-more">รายละเอียดครบทุกเคส + กับดัก ดูไฟล์ <code>docs/config.md</code></p>
+  </div>
+</details>
+
 <div class="cfg-banks-head">
   <span class="cfg-banks-title">ธนาคารที่ติดตาม</span>
   <span class="cfg-banks-count" id="banks-count"></span>

@@ -18,6 +18,7 @@
       <a href="/" class="{{ 'active' if active=='overview' else '' }}">ภาพรวม</a>
       {% if is_admin %}
       <a href="/config" class="{{ 'active' if active=='config' else '' }}">จัดการอัตรา</a>
+      <a href="/requests" class="{{ 'active' if active=='requests' else '' }}">คำขอ{% if new_request_count %}<span class="nav-badge">{{ new_request_count }}</span>{% endif %}</a>
       <a href="/logs" class="{{ 'active' if active=='logs' else '' }}">Log &amp; รัน</a>
       <form method="post" action="/logout"><button type="submit" class="navlink">ออกจากระบบ</button></form>
       {% else %}
@@ -40,6 +41,9 @@
     {% if is_admin %}
     <a href="/config" class="{{ 'active' if active=='config' else '' }}">
       <span class="botnav-ic" aria-hidden="true">⚙</span>จัดการอัตรา
+    </a>
+    <a href="/requests" class="{{ 'active' if active=='requests' else '' }}">
+      <span class="botnav-ic" aria-hidden="true">✉{% if new_request_count %}<span class="nav-badge">{{ new_request_count }}</span>{% endif %}</span>คำขอ
     </a>
     <a href="/logs" class="{{ 'active' if active=='logs' else '' }}">
       <span class="botnav-ic" aria-hidden="true">▶</span>Log

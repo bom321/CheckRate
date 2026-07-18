@@ -153,7 +153,16 @@
     return _startJob('/api/discover-year', only, '⏳ กำลังสแกนหาประวัติทั้งปี (ใช้เวลานาน)...', year);
   }
 
-  window.CheckRateRun = { startRun, startBackfill, startDiscoverYear, poll, setStatus, showOutput };
+  // สำหรับงานที่เริ่มจากที่อื่น (เช่น อัปโหลดประกาศ ที่ยิง /api/upload เอง แล้ว server สั่ง backfill ให้)
+  // — ทำให้เซสชันนี้ "เห็น" งานรัน เพื่อให้ poll รีเฟรชตารางให้ 1 ครั้งเมื่อเสร็จ
+  function trackExternalJob(startingText) {
+    observedRunning = true;
+    setStatus('running', startingText || '⏳ กำลังประมวลผล...');
+    if (!polling) polling = setInterval(poll, 1500);
+    poll();
+  }
+
+  window.CheckRateRun = { startRun, startBackfill, startDiscoverYear, poll, setStatus, showOutput, trackExternalJob };
 
   document.addEventListener('DOMContentLoaded', () => {
     const allBtn = document.getElementById('run-all');

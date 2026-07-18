@@ -391,11 +391,18 @@ def _find_tenor_row(lines: list[dict], start: int, end: int, tenor: int) -> tupl
 
 def _find_keyword_row(lines: list[dict], start: int, end: int, row_kw: str) -> int | None:
     """หาแถวตามชื่อ (row_keyword) — เทียบ skeleton แบบเท่ากันทั้งชื่อแถว ไม่ใช่ substring
-    ("สะสมทรัพย์" ต้องไม่ไปโดน "สะสมทรัพย์ขวัญบัวหลวง" / "สะสมทรัพย์ e-Savings" ที่มีอีก 6 แถว)"""
+    ("สะสมทรัพย์" ต้องไม่ไปโดน "สะสมทรัพย์ขวัญบัวหลวง" / "สะสมทรัพย์ e-Savings" ที่มีอีก 6 แถว)
+
+    two-pass: pass 1 = เท่ากันทั้งชื่อรายบรรทัด (เดิม); pass 2 (เมื่อ pass 1 ไม่เจอ) = ชื่อแถวถูก OCR ตัด
+    เป็น 2 บรรทัด → เทียบ label(i)+label(i+1) 'เท่ากัน' กับ row_kw (เท่านั้น ห้าม substring เคารพกับดัก
+    OCR ที่รวมหัวข้อ+แถวข้อมูลเป็นบรรทัดเดียว) คืน i+1 = บรรทัดที่สอง (บรรทัดที่มีค่าอัตรา)"""
     sk_kw = thai_skeleton(row_kw)
     for i in range(start, end):
         if _label_sk(lines[i]) == sk_kw:
             return i
+    for i in range(start, end - 1):
+        if _label_sk(lines[i]) + _label_sk(lines[i + 1]) == sk_kw:
+            return i + 1
     return None
 
 

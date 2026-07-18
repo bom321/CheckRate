@@ -27,7 +27,8 @@ import pdfplumber
 
 from .. import common
 from ..common import log
-from ._tablekit import thai_skeleton, kw_in_line, line_equals_kw, row_values, parse_tier_type_and_amount
+from ._tablekit import (thai_skeleton, kw_in_line, line_equals_kw, row_values,
+                        parse_tier_type_and_amount, find_joined_row, find_joined_section)
 
 PARSER_IDS = ["ktb"]
 
@@ -201,60 +202,32 @@ def _pick_ktb_tier(tiers: list[tuple[str, float, float | None, str]],
     return (None, "ไม่พบ tier ที่เหมาะสม")
 
 
-def _find_row_line(lines: list[str], section_kw: str | None, row_kw: str,
-                    amount_m: float | None) -> tuple[str | None, str]:
-    """หาแถวข้อมูลที่ตรงกับ row keyword (section_kw เป็น optional — ข้อ/แถวของ KTB unique ทั้งเอกสาร
-    อยู่แล้วในปัจจุบัน แต่เก็บ hook ไว้เผื่ออนาคต format เปลี่ยนแล้ว keyword ชนกันหลายจุด)"""
-    if section_kw:
-        start = None
-        for i, s in enumerate(lines):
-            if kw_in_line(section_kw, s):
-                start = i
-                break
-        if start is None:
-            return None, ""
-        end = len(lines)
-        for i in range(start + 1, len(lines)):
-            if _TOP_LEVEL_RE.match(lines[i]):
-                end = i
-                break
-        if not row_kw:
-            # ไม่ระบุ row_keyword — ใช้ได้เฉพาะกรณี section เป็นบรรทัดเดียวจบในตัว ไม่มี sub-row แยก
-            # (KTB เป็น list แบนราบ หลายข้อไม่มีลูกแยก เช่น "2. ออมทรัพย์ 0.250 ..." — บรรทัด section
-            # เองมีค่าตรง ๆ อยู่แล้ว) ถ้า section เป็นหัวข้อกว้างจริง (ไม่มีค่าตรง ๆ) ยังต้องระบุ row_keyword อยู่
-            if row_values(lines[start]):
-                return lines[start], "บรรทัดเดียว (section = row, ไม่มี tier วงเงิน)"
-            return None, ""
-        # รวมบรรทัด section เอง (start) ในการค้นหา row ด้วย — ไม่ใช่แค่ start+1 เป็นต้นไป เพราะ section
-        # กับ row อาจชี้บรรทัดเดียวกัน (เช่น ตั้ง section_keyword="2. ออมทรัพย์" + row_keyword="ออมทรัพย์"
-        # แบบเดิม — ถ้าเริ่มค้นที่ start+1 จะข้ามบรรทัดที่มีค่าจริงไปเลย หาไม่เจอทั้งที่ระบุครบ)
-        row_search_start = start
-    else:
-        start, end = -1, len(lines)
-        if not row_kw:
-            return None, ""
-        row_search_start = 0
-
-    row_idx = None
-    for i in range(row_search_start, end):
-        if line_equals_kw(row_kw, lines[i]):
-            row_idx = i
+def _ktb_section_range(lines: list[str], section_kw: str) -> tuple[int | None, int]:
+    """คืน (start, end) ของ section (start = บรรทัดหัวข้อ, end = boundary ถัดไป) หรือ (None, len)"""
+    start = None
+    for i, s in enumerate(lines):
+        if kw_in_line(section_kw, s):
+            start = i
             break
-    if row_idx is None:
-        for i in range(row_search_start, end):
-            if kw_in_line(row_kw, lines[i]):
-                row_idx = i
-                break
-    if row_idx is None:
-        return None, ""
+    if start is None:
+        return None, len(lines)
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if _TOP_LEVEL_RE.match(lines[i]):
+            end = i
+            break
+    return start, end
 
-    row_line = lines[row_idx]
+
+def _scan_ktb_tiers_and_pick(lines: list[str], tier_start: int, end: int,
+                              row_line: str, amount_m: float | None) -> tuple[str | None, str]:
+    """รับ row_line (บรรทัดเดียวหรือ join 2 บรรทัด) + ช่วงหา tier ลูก → (line, desc)"""
     if row_values(row_line):
         return row_line, "บรรทัดเดียว (ไม่มี tier วงเงิน)"
 
     # แถวเป็นหัวข้อไม่มีค่าตรง ๆ — มองหาบรรทัดลูก "- วงเงินฝาก..." ต่อเนื่องกันหลังแถวนี้
     tiers: list[tuple[str, float, float | None, str]] = []
-    for i in range(row_idx + 1, end):
+    for i in range(tier_start, end):
         s = lines[i]
         if not kw_in_line("วงเงิน", s):
             break
@@ -267,6 +240,80 @@ def _find_row_line(lines: list[str], section_kw: str | None, row_kw: str,
     if amount_m is None:
         return tiers[0][3], "ไม่ระบุวงเงิน (ใช้ tier แรกที่พบ)"
     return _pick_ktb_tier(tiers, amount_m)
+
+
+def _ktb_find_in_range(lines: list[str], search_start: int, end: int, row_kw: str,
+                        amount_m: float | None) -> tuple[str | None, str]:
+    row_idx = None
+    for i in range(search_start, end):
+        if line_equals_kw(row_kw, lines[i]):
+            row_idx = i
+            break
+    if row_idx is None:
+        for i in range(search_start, end):
+            if kw_in_line(row_kw, lines[i]):
+                row_idx = i
+                break
+    if row_idx is None:
+        return None, ""
+    return _scan_ktb_tiers_and_pick(lines, row_idx + 1, end, lines[row_idx], amount_m)
+
+
+def _find_row_line(lines: list[str], section_kw: str | None, row_kw: str,
+                    amount_m: float | None) -> tuple[str | None, str]:
+    """หาแถวข้อมูลที่ตรงกับ row keyword (section_kw เป็น optional — ข้อ/แถวของ KTB unique ทั้งเอกสาร
+    อยู่แล้วในปัจจุบัน แต่เก็บ hook ไว้เผื่ออนาคต format เปลี่ยนแล้ว keyword ชนกันหลายจุด)
+
+    two-pass: pass 1 รายบรรทัด (พฤติกรรมเดิม); pass 2 (เมื่อ pass 1 ล้มเหลวทั้งกระบวน) จับหัวข้อ/section
+    ที่ pdfplumber ตัดเป็น 2 บรรทัด — เข้า pass 2 เฉพาะตอน pass 1 ไม่ได้ผล กัน false positive"""
+    if section_kw:
+        start, end = _ktb_section_range(lines, section_kw)
+    else:
+        if not row_kw:
+            return None, ""
+        start, end = None, len(lines)
+
+    # ── pass 1: รายบรรทัด ──
+    if section_kw and start is not None and not row_kw:
+        # ไม่ระบุ row_keyword — ใช้ได้เฉพาะกรณี section เป็นบรรทัดเดียวจบในตัว (KTB เป็น list แบนราบ
+        # เช่น "2. ออมทรัพย์ 0.250 ..." — บรรทัด section เองมีค่าตรง ๆ)
+        if row_values(lines[start]):
+            return lines[start], "บรรทัดเดียว (section = row, ไม่มี tier วงเงิน)"
+    elif row_kw and (not section_kw or start is not None):
+        # รวมบรรทัด section เอง (start) ในการค้นหา row ด้วย — section กับ row อาจชี้บรรทัดเดียวกัน
+        search_start = start if (section_kw and start is not None) else 0
+        line, desc = _ktb_find_in_range(lines, search_start, end, row_kw, amount_m)
+        if line is not None:
+            return line, desc
+
+    # ── pass 2: หัวข้อ/section ถูกตัด 2 บรรทัด ──
+    if section_kw and start is None:
+        js = find_joined_section(lines, section_kw)
+        if js is None:
+            return None, ""
+        sec_start = js + 1
+        sec_end = len(lines)
+        for i in range(sec_start, len(lines)):
+            if _TOP_LEVEL_RE.match(lines[i]):
+                sec_end = i
+                break
+    elif section_kw:
+        sec_start, sec_end = start, end
+    else:
+        sec_start, sec_end = 0, len(lines)
+
+    if not row_kw:
+        # section=row ถูกตัด 2 บรรทัด: ต่อบรรทัดหัวข้อกับบรรทัดถัดไป แล้วเช็คว่ามีค่า
+        if sec_start + 1 < sec_end:
+            joined = lines[sec_start] + " " + lines[sec_start + 1]
+            if row_values(joined):
+                return joined, "สองบรรทัด (section = row, ไม่มี tier วงเงิน)"
+        return None, ""
+
+    row_line, tier_start = find_joined_row(lines, sec_start, sec_end, row_kw)
+    if row_line is None:
+        return None, ""
+    return _scan_ktb_tiers_and_pick(lines, tier_start, sec_end, row_line, amount_m)
 
 
 def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:

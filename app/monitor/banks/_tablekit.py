@@ -76,3 +76,54 @@ def parse_tier_type_and_amount(line: str) -> tuple[str, int] | None:
     if m:
         return ("at_least", int(m.group(1).replace(",", "")))
     return None
+
+
+def amount_to_million(amount_s: str, unit: str) -> float:
+    """แปลงจำนวนเงิน + หน่วย → ล้านบาท: 'แสน' = n×0.1, อื่น ๆ (ล้าน) = n
+    (เดิมอยู่ใน bay.py — ย้ายมารวมศูนย์ให้ parser อื่นใช้ tier หน่วยแสนได้ เช่น KBANK MAKE)"""
+    n = float(amount_s.replace(",", ""))
+    return n * 0.1 if unit == "แสน" else n
+
+
+# ─────────────────────────── Joined-window matchers (หัวข้อ 2 บรรทัด) ───────────────────────────
+# pdfplumber/OCR ตัดหัวข้อผลิตภัณฑ์ที่ยาวขึ้นบรรทัดใหม่ได้ (เช่น "…(K-eSavings)" + "ผ่านบริการ MAKE by KBank")
+# วลีที่คร่อมรอยต่อจะไม่ match รายบรรทัด — ใช้ตัวจับคู่เหล่านี้เป็น "pass 2" (เรียกเฉพาะเมื่อ pass 1 ราย
+# บรรทัดล้มเหลวทั้งกระบวน) โดยต่อ skeleton ของสองบรรทัดติดกันแล้วเทียบ กัน false positive ด้วยการเข้าถึง
+# เฉพาะตอน pass 1 ไม่พบผล
+def kw_in_joined(keyword: str, line_a: str, line_b: str) -> bool:
+    """True ถ้า skeleton ของ keyword เป็น substring ของ skeleton(line_a)+skeleton(line_b)"""
+    kw = thai_skeleton(keyword)
+    if not kw:
+        return False
+    return kw in (thai_skeleton(line_a) + thai_skeleton(line_b))
+
+
+def joined_equals_kw(keyword: str, line_a: str, line_b: str) -> bool:
+    """True ถ้า skeleton ของ keyword เท่ากับ skeleton(line_a)+skeleton(line_b) พอดี
+    (คู่กับ line_equals_kw — ใช้กับ parser ที่ต้องการความเท่ากันทั้งบรรทัด เช่น bbl)"""
+    kw = thai_skeleton(keyword)
+    if not kw:
+        return False
+    return kw == (thai_skeleton(line_a) + thai_skeleton(line_b))
+
+
+def find_joined_row(lines: list[str], start: int, end: int, row_kw: str) -> tuple[str | None, int | None]:
+    """pass-2: หาแถวหัวข้อที่ pdfplumber ตัดเป็น 2 บรรทัดในช่วง [start, end)
+    คืน (บรรทัดที่ต่อกันแล้ว, index บรรทัดถัดจากคู่ที่พบ = จุดเริ่มหา tier ลูก) หรือ (None, None)
+    เทียบ joined_equals_kw ก่อน (เข้มกว่า) แล้วค่อย kw_in_joined (substring) เพื่อลด false positive"""
+    for i in range(start, end - 1):
+        if joined_equals_kw(row_kw, lines[i], lines[i + 1]):
+            return lines[i] + " " + lines[i + 1], i + 2
+    for i in range(start, end - 1):
+        if kw_in_joined(row_kw, lines[i], lines[i + 1]):
+            return lines[i] + " " + lines[i + 1], i + 2
+    return None, None
+
+
+def find_joined_section(lines: list[str], section_kw: str, search_start: int = 0) -> int | None:
+    """pass-2: หาหัวข้อ section ที่ถูกตัด 2 บรรทัด — คืน index ของบรรทัด "ที่สอง" ของหัวข้อ
+    (เนื้อหา section เริ่มบรรทัดถัดไป) หรือ None ผู้เรียกคำนวณ end ด้วย boundary ของตัวเองต่อ"""
+    for i in range(search_start, len(lines) - 1):
+        if kw_in_joined(section_kw, lines[i], lines[i + 1]):
+            return i + 1
+    return None

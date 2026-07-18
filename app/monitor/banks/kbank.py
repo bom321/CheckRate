@@ -30,7 +30,7 @@ import pdfplumber
 
 from .. import common
 from ..common import log
-from ._tablekit import thai_skeleton, kw_in_line
+from ._tablekit import thai_skeleton, kw_in_line, kw_in_joined, amount_to_million
 
 PARSER_IDS = ["kbank"]
 
@@ -280,6 +280,50 @@ _NUM_RE = re.compile(r"\d[\d,]*\.\d+")
 _TIER_BOUNDARY_RE = re.compile(r"^\d[\d,]*\.0$")  # วงเงินของ KBANK เขียนแบบ "10.0", "500.0" เสมอ (ทศนิยมตัวเดียว)
 _VALUE_TOKEN_RE = re.compile(r"^\d[\d,]*\.\d+$")
 
+# หน่วย "แสน/ล้าน" สำหรับผลิตภัณฑ์ที่ระบุวงเงินแบบ "ไม่เกิน 5 แสนบาท" (เช่น MAKE by KBank) — ไม่ใช่รูป X.0
+_AMOUNT_UNIT_RE = re.compile(r"(\d[\d,]*)\s*(แสน|ล.{0,3}?น)บาท")
+# คำที่ x0 มากกว่านี้ = คอลัมน์หมายเหตุขวามือ (sidebar) ไม่ใช่เนื้อหาแถว — วัดจริงจากไฟล์ 2026-05-09:
+# ค่าอัตรา x0 ≤ 498, sidebar ทั้งแถว x0 ≥ 528 (margin >20px ทั้งสองด้าน) ใช้ข้าม sidebar ตอน join หัวข้อ
+_SIDEBAR_MIN_X = 520.0
+
+
+def _row_top(words: list[dict]) -> float:
+    return min((w["top"] for w in words), default=0.0)
+
+
+def _is_sidebar_row(words: list[dict]) -> bool:
+    """True ถ้าทุกคำในแถวอยู่ในโซนหมายเหตุขวามือ (เศษ 'การจ่าย'/'ดอกเบี้ย'/'(โปรดดู' ที่คั่นกลางหัวข้อ)"""
+    return bool(words) and all(w["x0"] > _SIDEBAR_MIN_X for w in words)
+
+
+def _row_has_values(words: list[dict]) -> bool:
+    """True ถ้าแถวมี token อัตรา (ทศนิยม) ในโซนคอลัมน์ (x >= 200 กันชนกับตัวเลขขอบเขตวงเงินที่ x<200)"""
+    return any(_VALUE_TOKEN_RE.match(w["text"]) and w["x0"] >= 200 for w in words)
+
+
+def _tier_bounds_ext(line: str) -> list[float]:
+    """ดึงขอบเขตวงเงินแบบมีหน่วย 'แสน/ล้าน' (เช่น 'ไม่เกิน 5 แสนบาท' → [0.5]) — ใช้เมื่อ _tier_bounds
+    รูป X.0 คืน [] เท่านั้น (ผลิตภัณฑ์แบบ MAKE ไม่ใช้รูป X.0)"""
+    return [amount_to_million(n, u) for n, u in _AMOUNT_UNIT_RE.findall(line)]
+
+
+def _tier_type_ext(line: str, bounds: list[float]) -> tuple[str, float, float | None] | None:
+    """คู่กับ _tier_bounds_ext — จัดประเภท tier ของวงเงินหน่วยแสน/ล้าน
+    ตรวจ 'ส่วนที่เกิน' ก่อน 'ไม่เกิน' (สองคำนี้ไม่ชนกันบน skeleton แต่คงลำดับไว้กันเหนียว)"""
+    if not bounds:
+        return None
+    if kw_in_line("ส่วนที่เกิน", line):
+        return ("above", bounds[0], None)
+    if kw_in_line("ไม่เกิน", line):
+        return ("up_to", 0.0, bounds[0])
+    if kw_in_line("น้อยกว่า", line):
+        return ("less_than", 0.0, bounds[0])
+    if kw_in_line("แต่ไม่ถึง", line) and len(bounds) >= 2:
+        return ("between", bounds[0], bounds[1])
+    if kw_in_line("ขึ้นไป", line) or kw_in_line("ตั้งแต่", line):
+        return ("at_least", bounds[0], None)
+    return None
+
 
 def _tier_bounds(line: str) -> list[float]:
     """ดึงตัวเลขที่เป็นขอบเขตวงเงิน (รูปแบบ X.0 เสมอ) จากบรรทัด 'วงเงิน …'
@@ -309,10 +353,16 @@ def _tier_type(line: str, bounds: list[float]) -> tuple[str, float, float | None
 def _pick_tier(tiers: list[tuple[str, float, float | None, list[dict]]],
                amount_m: float) -> tuple[list[dict] | None, str]:
     for t_type, lo, hi, words in tiers:
+        if t_type == "single":
+            return words, "บรรทัดเดียว (ไม่มี tier วงเงิน)"
         if t_type == "less_than" and amount_m < hi:
             return words, f"น้อยกว่า {hi:g} ล้านบาท"
+        if t_type == "up_to" and amount_m <= hi:
+            return words, f"ไม่เกิน {hi:g} ล้านบาท"
         if t_type == "between" and lo <= amount_m < hi:
             return words, f"ตั้งแต่ {lo:g} ถึง {hi:g} ล้านบาท"
+        if t_type == "above" and amount_m > lo:
+            return words, f"มากกว่า {lo:g} ล้านบาท"
         if t_type == "at_least" and amount_m >= lo:
             return words, f"ตั้งแต่ {lo:g} ล้านบาทขึ้นไป"
     at_leasts = [(lo, words) for (t, lo, hi, words) in tiers if t == "at_least"]
@@ -338,64 +388,128 @@ def _value_at_column(value_words: list[dict], anchor_x: float) -> str | None:
 _TOP_LEVEL_RE = re.compile(r"^\d+\.\s+\S")
 
 
-def _find_tenor_tiers(flat_rows: list[tuple[int, list[dict]]], row_kw: str):
-    """หาแถวหัวข้อ '{row_kw}' (เช่น 'เงินฝากประจำ 12 เดือน') แล้วเก็บ tier ที่ตามมา
-    จนกว่าจะเจอหัวข้อ 'เงินฝากประจำ' อีกตัว (tenor ถัดไป) หรือหมวดเลขลำดับใหม่ (เช่น '8. เงินฝากพื้นฐาน')
+def _nearest_value_row(section_rows: list[list[dict]], section_texts: list[str],
+                        tier_idx: int, consumed: set[int]) -> int | None:
+    """หาแถว 'ค่าล้วน' (มี token อัตรา, ไม่ใช่แถว 'วงเงิน', ไม่ใช่ sidebar) ที่ยังไม่ถูกใช้ ใกล้ tier_idx
+    ที่สุดตามระยะแนวดิ่ง (|Δtop|) — เคส MAKE by KBank: ค่าอยู่ 'แถวก่อน' บรรทัด label (pdfplumber ตัดแยก
+    ค่าออกมาอยู่คนละแถวกับ 'วงเงิน …'). เสมอกันเลือกแถวก่อนหน้า (top น้อยกว่า)"""
+    tier_top = _row_top(section_rows[tier_idx])
+    best, best_key = None, None
+    for k, words in enumerate(section_rows):
+        if k in consumed or kw_in_line("วงเงิน", section_texts[k]):
+            continue
+        if _is_sidebar_row(words) or not _row_has_values(words):
+            continue
+        top = _row_top(words)
+        key = (abs(top - tier_top), 0 if top <= tier_top else 1)
+        if best_key is None or key < best_key:
+            best, best_key = k, key
+    return best
 
-    รองรับทั้งกรณีค่าอยู่แถวเดียวกับ 'วงเงิน …' และกรณี pdfplumber ตัดแถวไปไว้ถัดไป (พบใน 24 เดือน)
-    โดยดึงค่าจากแถวถัดไปที่มี token ตัวเลขในโซนคอลัมน์ (x >= 200 กันชนกับตัวเลขขอบเขตวงเงินที่ x<200)
 
-    คืน (heading_page_idx, heading_top, tiers) — heading_page/heading_top ใช้ scope การหา column anchor
-    ให้แคบแค่ 'เหนือหัวข้อ tenor นี้ บนหน้าเดียวกัน' (กัน anchor keyword ชนกับที่อื่นในเอกสาร)"""
-    row_texts = [_row_text(r) for _, r in flat_rows]
+def _extract_from_heading(flat_rows: list[tuple[int, list[dict]]], row_texts: list[str],
+                           start_idx: int, heading_end_idx: int):
+    """เก็บ tier ที่ตามหลังหัวข้อ (start_idx = บรรทัดแรกของหัวข้อ, heading_end_idx = บรรทัดสุดท้ายของหัวข้อ
+    — เท่ากับ start_idx ถ้าหัวข้อบรรทัดเดียว) จนกว่าจะเจอ 'เงินฝากประจำ' อีกตัวหรือหมวดเลขลำดับใหม่
 
-    start_idx = None
-    for i, txt in enumerate(row_texts):
-        if kw_in_line(row_kw, txt):
-            start_idx = i
-            break
-    if start_idx is None:
-        return None, None, None
+    รองรับ: ค่าในแถว 'วงเงิน …' เอง / ค่าในแถวถัดไป (24 เดือน) / ค่าในแถวกำพร้า prev/next (MAKE) /
+    วงเงินหน่วยแสน-ล้าน / ผลิตภัณฑ์บรรทัดเดียวที่มีค่าในหัวข้อเอง (LINE BK)
 
+    คืน (heading_page, heading_top, tiers) — heading_top ใช้ scope column anchor เหนือหัวข้อบนหน้าเดียวกัน"""
     heading_page, heading_words = flat_rows[start_idx]
     heading_top = heading_words[0]["top"] if heading_words else 0.0
+    last_heading_words = flat_rows[heading_end_idx][1]
 
     section_rows: list[list[dict]] = []
     section_texts: list[str] = []
-    for i in range(start_idx + 1, len(flat_rows)):
+    for i in range(heading_end_idx + 1, len(flat_rows)):
         txt = row_texts[i]
         if kw_in_line("เงินฝากประจำ", txt) or _TOP_LEVEL_RE.match(txt.strip()):
             break
-        _, words = flat_rows[i]
-        section_rows.append(words)
+        section_rows.append(flat_rows[i][1])
         section_texts.append(txt)
 
     tiers = []
+    consumed: set[int] = set()
     i = 0
     while i < len(section_rows):
         txt = section_texts[i]
         if not kw_in_line("วงเงิน", txt):
             i += 1
             continue
+        # bounds รูป X.0 ก่อน (เดิม) → ถ้าไม่มีลองหน่วยแสน/ล้าน (เช่น MAKE 'ไม่เกิน 5 แสนบาท')
         bounds = _tier_bounds(txt)
-        if not bounds:
-            i += 1
-            continue
-        tt = _tier_type(txt, bounds)
+        tt = _tier_type(txt, bounds) if bounds else None
+        if tt is None:
+            bounds_ext = _tier_bounds_ext(txt)
+            tt = _tier_type_ext(txt, bounds_ext) if bounds_ext else None
         if tt is None:
             i += 1
             continue
 
-        value_words = section_rows[i]
-        has_values_here = any(_VALUE_TOKEN_RE.match(w["text"]) and w["x0"] >= 200 for w in value_words)
-        if not has_values_here and i + 1 < len(section_rows):
-            nxt_words, nxt_txt = section_rows[i + 1], section_texts[i + 1]
-            if not kw_in_line("วงเงิน", nxt_txt):
-                value_words = nxt_words
+        # จับคู่แถวค่า: pass 1 (เดิม) ค่าในแถว 'วงเงิน' เอง หรือแถวถัดไปที่ไม่ใช่ 'วงเงิน'
+        val_idx = None
+        if _row_has_values(section_rows[i]):
+            val_idx = i
+        elif (i + 1 < len(section_rows) and (i + 1) not in consumed
+              and not kw_in_line("วงเงิน", section_texts[i + 1])
+              and _row_has_values(section_rows[i + 1])):
+            val_idx = i + 1
+        else:
+            # pass 2: แถวค่ากำพร้าใกล้สุด (prev/next) — เคส MAKE
+            val_idx = _nearest_value_row(section_rows, section_texts, i, consumed)
 
-        tiers.append((*tt, value_words))
+        if val_idx is not None:
+            consumed.add(val_idx)
+            tiers.append((*tt, section_rows[val_idx]))
         i += 1
+
+    # ผลิตภัณฑ์บรรทัดเดียว (ค่าอยู่ในบรรทัดหัวข้อเอง เช่น '7. เงินฝาก LINE BK 0.250') — เมื่อไม่มี tier วงเงินเลย
+    if not tiers and _row_has_values(last_heading_words):
+        tiers = [("single", 0.0, None, last_heading_words)]
+
     return heading_page, heading_top, (tiers or None)
+
+
+def _next_content_row(flat_rows: list[tuple[int, list[dict]]], i: int) -> int | None:
+    """คืน index ของแถวถัดจาก i บน 'หน้าเดียวกัน' ที่ไม่ใช่ sidebar (ใช้ join หัวข้อ 2 บรรทัดข้าม sidebar
+    ที่คั่นกลาง เช่น 'การจ่าย'/'ดอกเบี้ย' ในคอลัมน์หมายเหตุขวามือ)"""
+    page_i = flat_rows[i][0]
+    for k in range(i + 1, len(flat_rows)):
+        if flat_rows[k][0] != page_i:
+            return None
+        if _is_sidebar_row(flat_rows[k][1]):
+            continue
+        return k
+    return None
+
+
+def _find_tenor_tiers(flat_rows: list[tuple[int, list[dict]]], row_kw: str):
+    """หาแถวหัวข้อ '{row_kw}' (เช่น 'เงินฝากประจำ 12 เดือน' หรือชื่อผลิตภัณฑ์ไม่มี tenor) แล้วเก็บ tier
+
+    two-pass: pass 1 = หัวข้อรายบรรทัด (พฤติกรรมเดิม); pass 2 (เมื่อ pass 1 หาไม่เจอ *หรือ* เจอแต่ไม่ได้
+    tiers) = หัวข้อถูกตัด 2 บรรทัด join ข้าม sidebar ที่คั่นกลาง (เคส MAKE by KBank ที่บรรทัดแรกซ้ำกับ
+    ผลิตภัณฑ์อื่น ต้องใช้บรรทัดสองแยก) — เข้า pass 2 เฉพาะตอน pass 1 ไม่ได้ผล กัน false positive"""
+    row_texts = [_row_text(r) for _, r in flat_rows]
+
+    # ── pass 1: หัวข้อรายบรรทัด ──
+    for i, txt in enumerate(row_texts):
+        if kw_in_line(row_kw, txt):
+            res = _extract_from_heading(flat_rows, row_texts, i, i)
+            if res[2]:
+                return res
+            break  # เจอหัวข้อแต่ดึง tiers ไม่ได้ → ลอง pass 2
+
+    # ── pass 2: หัวข้อ 2 บรรทัด (ข้าม sidebar) ──
+    for i in range(len(flat_rows)):
+        j = _next_content_row(flat_rows, i)
+        if j is None:
+            continue
+        if kw_in_joined(row_kw, row_texts[i], row_texts[j]):
+            res = _extract_from_heading(flat_rows, row_texts, i, j)
+            if res[2]:
+                return res
+    return None, None, None
 
 
 def extract_rates(pdf_bytes: bytes, bank: dict) -> dict | None:

@@ -13,7 +13,7 @@
 
 <!-- ── hero: สรุปทั้งเดือนในประโยคเดียว + KPI ── -->
 <div class="ov-hero">
-  <div>
+  <div class="ov-hero-lead">
     <div class="ov-hero-month">{{ month|thai_month }}</div>
     {% if kpi.last_checked %}
     <div class="ov-hero-meta">ตรวจสอบล่าสุด {{ kpi.last_checked|thai_datetime }}</div>
@@ -28,14 +28,6 @@
       </h1>
     {% else %}
       <h1>ยังไม่มีธนาคารใดประกาศดอกเบี้ยในเดือนนี้</h1>
-    {% endif %}
-    {% if is_admin %}
-    <div class="ov-hero-actions">
-      <button id="run-all" class="btn primary"><span class="btn-dot"></span>รันตรวจสอบทันที</button>
-      <span id="run-status" class="status-pill idle">พร้อมทำงาน</span>
-    </div>
-    {# ไม่มี #run-output ในหน้านี้ตั้งใจ — run.js จะข้ามการโชว์ log ให้เอง เหลือแค่สรุปผลใน #run-notice #}
-    <div id="run-notice"></div>
     {% endif %}
   </div>
 
@@ -58,6 +50,24 @@
     </div>
   </div>
 </div>
+
+{# แถวปุ่ม — แยกออกจาก hero ให้ KPI เสมอหัวข้อ และปุ่มลงมาชิดการ์ดธนาคาร (2a)
+   run (แอดมิน) + เสนอธนาคารใหม่ (สาธารณะ) อยู่แถวเดียวกัน #}
+<div class="ov-hero-actions">
+  {% if is_admin %}
+  <button id="run-all" class="btn primary"><span class="btn-dot"></span>รันตรวจสอบทันที</button>
+  <span id="run-status" class="status-pill idle">พร้อมทำงาน</span>
+  {% endif %}
+  {# ปุ่มสาธารณะ — ทุกคนเห็น ให้คนทั่วไปเสนอธนาคารใหม่ #}
+  <button id="suggest-bank" type="button" class="btn req-add">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+    <span>เสนอธนาคารใหม่</span>
+  </button>
+</div>
+{% if is_admin %}
+{# ไม่มี #run-output ในหน้านี้ตั้งใจ — run.js จะข้ามการโชว์ log ให้เอง เหลือแค่สรุปผลใน #run-notice #}
+<div id="run-notice"></div>
+{% endif %}
 
 <!-- ── การ์ดธนาคาร: จำนวนประกาศในเดือนนี้ ── -->
 <div class="ov-cards">
@@ -192,9 +202,51 @@
   {% endfor %}
 </div>
 
+<!-- กล่องเสนอธนาคารใหม่ (สาธารณะ) — ดีไซน์จาก claude design -->
+<dialog id="newbank-dialog" class="req-modal">
+  <div class="req-modal-head">
+    <div class="req-modal-title">เสนอธนาคารใหม่ให้ติดตาม</div>
+    <button type="button" class="req-modal-x" data-req-close aria-label="ปิด">✕</button>
+  </div>
+
+  <form class="req-form" data-req-type="newbank">
+    <label class="req-field">
+      <span class="req-field-label">ชื่อธนาคาร <span class="req-req">*</span></span>
+      <input type="text" name="bank_name" required maxlength="120" placeholder="เช่น ธนาคารทิสโก้">
+    </label>
+    <label class="req-field">
+      <span class="req-field-label">ลิงก์หน้าประกาศอัตราดอกเบี้ย <span class="req-opt">(ไม่บังคับ)</span></span>
+      <input type="url" name="link" maxlength="500" placeholder="https://..." class="req-mono">
+    </label>
+    <label class="req-field">
+      <span class="req-field-label">เหตุผล/รายละเอียด <span class="req-opt">(ไม่บังคับ)</span></span>
+      <textarea name="detail" rows="3" maxlength="1000" placeholder="เช่น เป็นธนาคารที่มีลูกค้าเยอะ อยากให้เปรียบเทียบได้"></textarea>
+    </label>
+    <label class="req-field">
+      <span class="req-field-label">อีเมลของคุณ <span class="req-req">*</span></span>
+      <input type="email" name="email" required placeholder="you@email.com">
+      <span class="req-hint">เผื่อผู้ดูแลติดต่อกลับ ไม่เผยแพร่ต่อ</span>
+    </label>
+    <input type="text" name="website" tabindex="-1" autocomplete="off" class="req-hp" aria-hidden="true">
+    <div class="req-error" hidden>ส่งคำขอไม่สำเร็จ กรุณาลองใหม่อีกครั้ง</div>
+    <div class="req-form-actions">
+      <button type="button" class="btn" data-req-close>ยกเลิก</button>
+      <button type="submit" class="btn primary req-submit">ส่งคำขอ</button>
+    </div>
+  </form>
+
+  <div class="req-success" hidden>
+    <div class="req-success-ic">✓</div>
+    <div class="req-success-title">ส่งคำขอแล้ว ขอบคุณครับ</div>
+    <div class="req-success-sub">ทีมงานจะพิจารณาเพิ่มธนาคารนี้เข้าระบบ</div>
+    <button type="button" class="btn primary" data-req-close>ปิดหน้าต่าง</button>
+  </div>
+</dialog>
+
 {% endblock %}
 
 {% block scripts %}
 {% if is_admin %}<script src="/static/js/run.js"></script>{% endif %}
 <script src="/static/js/overview.js"></script>
+<script src="/static/js/request.js"></script>
 {% endblock %}

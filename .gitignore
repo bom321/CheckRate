@@ -9,6 +9,7 @@ __pycache__/
 *.pyc
 .DS_Store
 *.log
+*.log.*
 handover.md
 CLAUDE.md
 backup/
